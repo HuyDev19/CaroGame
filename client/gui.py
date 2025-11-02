@@ -51,7 +51,7 @@ class CaroGUI:
         side = tk.Frame(root)
         side.pack(side=tk.RIGHT, fill=tk.Y, padx=6, pady=6)
         tk.Label(side, text='Phòng hiện có').pack()
-        # Treeview with columns: Room, Players, Creator
+    # Treeview với cột: Phòng, Người, Người tạo
         self.room_tree = ttk.Treeview(side, columns=('room', 'players', 'creator'), show='headings', height=20)
         self.room_tree.heading('room', text='Phòng')
         self.room_tree.heading('players', text='Người')
@@ -63,15 +63,15 @@ class CaroGUI:
         rb_scroll = tk.Scrollbar(side, orient=tk.VERTICAL, command=self.room_tree.yview)
         rb_scroll.pack(side=tk.LEFT, fill=tk.Y)
         self.room_tree.config(yscrollcommand=rb_scroll.set)
-        # double-click to join
+    # double-click để tham gia
         self.room_tree.bind('<Double-1>', lambda e: self.join_selected_room())
-        # right-click context menu
+    # menu chuột phải (context menu)
         self.room_menu = tk.Menu(root, tearoff=0)
         self.room_menu.add_command(label='Tham gia', command=self.join_selected_room)
         self.room_menu.add_command(label='Đổi tên', command=self.rename_selected_room)
         self.room_menu.add_command(label='Xóa', command=self.delete_selected_room)
         self.room_tree.bind('<Button-3>', self._on_room_right_click)
-        # room count
+    # hiển thị số phòng
         self.room_count_lbl = tk.Label(side, text='0 phòng')
         self.room_count_lbl.pack(pady=(6,0))
 
@@ -264,7 +264,7 @@ class CaroGUI:
         elif mtype == 'LIST_ROOMS_RESPONSE':
             # payload.rooms = [{room, players, creator?}, ...]
             rooms = payload.get('rooms', [])
-            # cache rooms so we can support names with spaces/unicode
+            # lưu cache danh sách phòng để hỗ trợ tên có dấu/khoảng trắng/unicode
             self._rooms = rooms
             # refresh tree
             for iid in self.room_tree.get_children():
@@ -314,7 +314,7 @@ class CaroGUI:
     def _draw_board(self):
         # Xóa các text quân cờ cũ
         self.canvas.delete('stone')
-        # Dùng font lớn cho X/O
+    # Dùng font lớn cho X/O
         try:
             font = ('Arial', int(self.cell*0.5), 'bold')
         except Exception:
@@ -333,7 +333,7 @@ class CaroGUI:
 
     def find_winning_line(self, board, win_len=5):
         """Tìm và trả về danh sách (x,y) của đường thắng nếu có, ngược lại trả về [].
-        board là list of rows: board[y][x]
+        `board` là danh sách các hàng: board[y][x]
         """
         H = len(board)
         W = len(board[0]) if H>0 else 0
@@ -350,7 +350,7 @@ class CaroGUI:
                         coords.append((nx, ny))
                         nx += dx
                         ny += dy
-                    # also check in the negative direction to ensure full line
+                    # kiểm tra thêm hướng ngược lại để thu được toàn bộ đoạn thẳng
                     bx, by = x-dx, y-dy
                     while 0 <= bx < W and 0 <= by < H and board[by][bx] == v:
                         coords.insert(0, (bx, by))
@@ -361,8 +361,8 @@ class CaroGUI:
         return []
 
     def animate_win(self, coords, callback=None, cycles=6, interval=250):
-        """Blink highlight the cells in coords (list of (x,y)).
-        After animation completes, call callback() if provided.
+        """Hiệu ứng nhấp nháy (blink) tô sáng các ô trong `coords` (danh sách (x,y)).
+        Sau khi animation kết thúc sẽ gọi `callback()` nếu có.
         """
         if not coords:
             if callback:
@@ -372,7 +372,7 @@ class CaroGUI:
         orig_fills = {}
         highlight = 'gold'
 
-        # capture original fill for each cell
+    # lưu màu fill ban đầu của từng ô để phục hồi sau animation
         for x,y in coords:
             tag = f'cell_{x}_{y}'
             items = self.canvas.find_withtag(tag)
@@ -387,7 +387,7 @@ class CaroGUI:
 
         def pulse():
             i = step['i']
-            # toggle color
+        # bật/tắt màu highlight (toggle)
             make_high = (i % 2 == 0)
             for it, orig in orig_fills.items():
                 try:
@@ -398,7 +398,7 @@ class CaroGUI:
             if step['i'] <= cycles:
                 self.root.after(interval, pulse)
             else:
-                # ensure original fill restored
+                # đảm bảo phục hồi màu fill ban đầu
                 for it, orig in orig_fills.items():
                     try:
                         self.canvas.itemconfigure(it, fill=orig)
