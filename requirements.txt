@@ -1,0 +1,2 @@
+# Không cần thư viện ngoài, dùng Python chuẩn
+python>=3.8
