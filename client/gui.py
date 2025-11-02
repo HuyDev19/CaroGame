@@ -98,6 +98,8 @@ class CaroGUI:
         self._rooms = []
         # board[y][x]
         self.board = [[0]*self.size for _ in range(self.size)]
+        # flag to disable input during animations
+        self._animating = False
 
         # vẽ lưới bằng rectangles (ô vuông) — mỗi ô có tag 'cell'
         for y in range(self.size):
@@ -218,6 +220,9 @@ class CaroGUI:
                 messagebox.showerror('Lỗi', f'Đổi tên thất bại: {e}')
 
     def on_click(self, event):
+        if self._animating:
+            # ignore clicks while win animation is running
+            return
         if not self.conn:
             return
         # Tính ô dựa trên vị trí click (mỗi ô có kích thước self.cell)
@@ -292,7 +297,16 @@ class CaroGUI:
             self.board = board
             self._draw_board()
             if payload.get('winner'):
-                messagebox.showinfo('Kết thúc', f"Người thắng: {payload.get('winner')}")
+                # attempt to find the winning line locally and animate it
+                win_coords = self.find_winning_line(self.board, win_len=5)
+                if win_coords:
+                    # animate then show message
+                    def after_anim():
+                        messagebox.showinfo('Kết thúc', f"Người thắng: {payload.get('winner')}")
+                    self.animate_win(win_coords, callback=after_anim)
+                else:
+                    # fallback: just show message
+                    messagebox.showinfo('Kết thúc', f"Người thắng: {payload.get('winner')}")
         elif mtype == 'CHAT':
             # chat hiện chưa hiển thị, có thể mở rộng
             print('CHAT', payload)
@@ -316,6 +330,88 @@ class CaroGUI:
                     color = 'black' if v == 1 else 'red'
                     # vẽ ký tự ở giữa ô
                     self.canvas.create_text(cx, cy, text=symbol, fill=color, font=font, tags='stone')
+
+    def find_winning_line(self, board, win_len=5):
+        """Tìm và trả về danh sách (x,y) của đường thắng nếu có, ngược lại trả về [].
+        board là list of rows: board[y][x]
+        """
+        H = len(board)
+        W = len(board[0]) if H>0 else 0
+        dirs = [(1,0),(0,1),(1,1),(1,-1)]
+        for y in range(H):
+            for x in range(W):
+                v = board[y][x]
+                if v == 0:
+                    continue
+                for dx,dy in dirs:
+                    coords = [(x,y)]
+                    nx, ny = x+dx, y+dy
+                    while 0 <= nx < W and 0 <= ny < H and board[ny][nx] == v:
+                        coords.append((nx, ny))
+                        nx += dx
+                        ny += dy
+                    # also check in the negative direction to ensure full line
+                    bx, by = x-dx, y-dy
+                    while 0 <= bx < W and 0 <= by < H and board[by][bx] == v:
+                        coords.insert(0, (bx, by))
+                        bx -= dx
+                        by -= dy
+                    if len(coords) >= win_len:
+                        return coords
+        return []
+
+    def animate_win(self, coords, callback=None, cycles=6, interval=250):
+        """Blink highlight the cells in coords (list of (x,y)).
+        After animation completes, call callback() if provided.
+        """
+        if not coords:
+            if callback:
+                callback()
+            return
+        self._animating = True
+        orig_fills = {}
+        highlight = 'gold'
+
+        # capture original fill for each cell
+        for x,y in coords:
+            tag = f'cell_{x}_{y}'
+            items = self.canvas.find_withtag(tag)
+            for it in items:
+                try:
+                    orig = self.canvas.itemcget(it, 'fill')
+                except Exception:
+                    orig = ''
+                orig_fills[it] = orig
+
+        step = {'i': 0}
+
+        def pulse():
+            i = step['i']
+            # toggle color
+            make_high = (i % 2 == 0)
+            for it, orig in orig_fills.items():
+                try:
+                    self.canvas.itemconfigure(it, fill=(highlight if make_high else orig))
+                except Exception:
+                    pass
+            step['i'] += 1
+            if step['i'] <= cycles:
+                self.root.after(interval, pulse)
+            else:
+                # ensure original fill restored
+                for it, orig in orig_fills.items():
+                    try:
+                        self.canvas.itemconfigure(it, fill=orig)
+                    except Exception:
+                        pass
+                self._animating = False
+                if callback:
+                    try:
+                        callback()
+                    except Exception:
+                        pass
+
+        pulse()
 
 
 if __name__ == '__main__':
