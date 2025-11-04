@@ -56,6 +56,71 @@ Liên hệ
 
 ---
 Tài liệu này là hướng dẫn cơ bản để nhanh chóng chạy và đóng góp cho dự án.
+
+## Chạy dự án (chi tiết)
+
+Các bước dưới đây mô tả cách thiết lập môi trường và chạy server & client trên Windows (PowerShell). Nếu bạn trên Linux/macOS, các lệnh tương tự áp dụng nhưng kích hoạt venv khác (ví dụ `source .venv/bin/activate`).
+
+1) Tạo và kích hoạt virtualenv (chỉ lần đầu):
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+2) Cài dependencies (nếu có):
+```powershell
+pip install -r requirements.txt
+```
+
+3) Kiểm tra nhanh (tùy chọn):
+```powershell
+# kiểm tra cú pháp
+python -m py_compile server/server.py client/gui.py
+
+# chạy unit tests
+python -m unittest discover -v
+```
+
+4) Chạy server (mở một cửa sổ PowerShell):
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m server.server
+```
+
+5) Chạy client GUI (mở thêm 1 cửa sổ PowerShell cho mỗi client):
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m client.gui
+```
+
+6) Chạy nhiều client: mở thêm các cửa sổ PowerShell và lặp bước 5.
+
+7) Chạy server ở background (tuỳ chọn):
+```powershell
+# Start a background job (PowerShell)
+Start-Job -ScriptBlock { .\.venv\Scripts\Activate.ps1; python -m server.server }
+
+# hoặc Start-Process
+Start-Process -NoNewWindow -FilePath python -ArgumentList "-m server.server"
+```
+
+8) Nếu port 5000 đang bị chiếm:
+```powershell
+netstat -ano | Select-String ":5000"
+taskkill /PID <PID> /F
+```
+
+9) Run scripts (nếu có):
+- Nếu repo có `run-server.ps1` hoặc `run-client.ps1`, bạn chỉ cần chạy `.
+un-server.ps1` hoặc `.
+un-client.ps1` để tự động kích hoạt venv và khởi server/client.
+
+10) Tắt virtualenv khi xong:
+```powershell
+deactivate
+```
+
+Mẹo: Luôn `git fetch` / `git pull --rebase origin main` trước khi tạo branch mới để tránh xung đột.
 <<<<<<< HEAD
 # CaroGame (Multi Client-Server) - Hướng dẫn nhanh (tiếng Việt)
 
