@@ -61,9 +61,15 @@ class CaroGUI:
         self.status_lbl = ttk.Label(top, text='Chưa kết nối')
         self.status_lbl.pack(side=tk.LEFT, padx=10)
 
+        # Khu vực nội dung chính: Panedwindow để kéo thay đổi kích thước sidebar
+        self.pw = ttk.Panedwindow(root, orient=tk.HORIZONTAL)
+        self.pw.pack(fill=tk.BOTH, expand=True)
+        self.left_pane = ttk.Frame(self.pw)
+        self.pw.add(self.left_pane, weight=3)
+
         # Sidebar hiển thị danh sách phòng
-        side = ttk.Frame(root)
-        side.pack(side=tk.RIGHT, fill=tk.Y, padx=6, pady=6)
+        side = ttk.Frame(self.pw, width=260)
+        self.pw.add(side, weight=1)
         ttk.Label(side, text='Phòng hiện có', style='Header.TLabel').pack()
     # Treeview với cột: Phòng, Người, Người tạo
         self.room_tree = ttk.Treeview(side, columns=('room', 'players', 'creator'), show='headings', height=20)
@@ -103,9 +109,9 @@ class CaroGUI:
         board_bg = '#f5deb3'  # wheat
         self.board_bg = board_bg
         self.grid_color = '#b29762'
-        self.canvas = tk.Canvas(root, width=self.size*self.cell, height=self.size*self.cell, bg=board_bg, highlightthickness=0)
-        # Đặt canvas bên trái và cho phép mở rộng để tương tác tốt với sidebar
-        self.canvas.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
+        self.canvas = tk.Canvas(self.left_pane, width=self.size*self.cell, height=self.size*self.cell, bg=board_bg, highlightthickness=0)
+        # Canvas chiếm toàn bộ khu vực trái
+        self.canvas.pack(expand=True, fill=tk.BOTH)
         self.canvas.bind('<Button-1>', self.on_click)
         # Lắng nghe thay đổi kích thước để scale theo tỉ lệ
         self.canvas.bind('<Configure>', self._on_canvas_resize)
@@ -136,8 +142,9 @@ class CaroGUI:
         # kiểm tra queue theo chu kỳ
         self.root.after(100, self._process_queue)
 
-        # Lưu tham chiếu để toggle
+        # Lưu tham chiếu để toggle và nhớ bề rộng gần nhất
         self.side_frame = side
+        self.sidebar_width = 260
 
     def connect(self):
         if self.conn:
@@ -251,11 +258,20 @@ class CaroGUI:
             return
         if not self.conn:
             return
-        # Tính ô dựa trên vị trí click (mỗi ô có kích thước self.cell)
-        x = event.x // self.cell
-        y = event.y // self.cell
+        # Tính ô dựa trên vị trí click với phần bù căn giữa (offset)
+        cw = max(self.canvas.winfo_width(), 1)
+        ch = max(self.canvas.winfo_height(), 1)
+        grid_pix = self.size * self.cell
+        ox = max((cw - grid_pix) // 2, 0)
+        oy = max((ch - grid_pix) // 2, 0)
+        gx = event.x - ox
+        gy = event.y - oy
+        if gx < 0 or gy < 0:
+            return
+        x = gx // self.cell
+        y = gy // self.cell
         if 0 <= x < self.size and 0 <= y < self.size:
-            self.conn.send('MOVE', {'x': x, 'y': y})
+            self.conn.send('MOVE', {'x': int(x), 'y': int(y)})
 
     def _process_queue(self):
         try:
@@ -268,8 +284,15 @@ class CaroGUI:
 
     def toggle_sidebar(self):
         if self.sidebar_visible:
+            # Ghi nhớ bề rộng hiện tại của sidebar trước khi ẩn
             try:
-                self.side_frame.pack_forget()
+                w = self.side_frame.winfo_width()
+                if w > 50:
+                    self.sidebar_width = w
+            except Exception:
+                pass
+            try:
+                self.pw.forget(self.side_frame)
             except Exception:
                 pass
             self.sidebar_visible = False
@@ -279,8 +302,15 @@ class CaroGUI:
                 pass
         else:
             try:
-                # Pack trước canvas để bố cục đúng (sidebar bám phải, canvas chiếm phần còn lại)
-                self.side_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=6, pady=6, before=self.canvas)
+                self.pw.add(self.side_frame, weight=1)
+                self.root.update_idletasks()
+                # Đặt vị trí sash để khôi phục bề rộng sidebar (nếu API hỗ trợ)
+                try:
+                    pw_w = max(self.pw.winfo_width(), 1)
+                    newpos = max(100, pw_w - int(self.sidebar_width))
+                    self.pw.sashpos(0, newpos)
+                except Exception:
+                    pass
             except Exception:
                 pass
             self.sidebar_visible = True

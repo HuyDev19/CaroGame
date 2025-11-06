@@ -27,6 +27,8 @@ PORT = 5000
 
 # rooms: room_id -> Room
 rooms: Dict[str, Room] = {}
+# danh sách mọi kết nối client hiện tại (để broadcast toàn cục cập nhật danh sách phòng)
+clients = set()
 
 
 def broadcast_room(room: Room, msg: dict) -> None:
@@ -43,11 +45,38 @@ def broadcast_room(room: Room, msg: dict) -> None:
             room.remove_player(pid)
 
 
+def broadcast_all(msg: dict) -> None:
+    """Gửi msg tới tất cả client đang kết nối (ở bất kỳ phòng nào)."""
+    for c in list(clients):
+        try:
+            send_msg(c, msg)
+        except Exception:
+            try:
+                c.close()
+            except Exception:
+                pass
+            try:
+                clients.remove(c)
+            except Exception:
+                pass
+
+
+def build_rooms_list() -> list:
+    res = []
+    for rid, r in rooms.items():
+        res.append({'room': rid, 'players': len(r.players)})
+    return res
+
 def handle_client(conn: socket.socket, addr):
     """Hàm chạy trên thread cho mỗi client kết nối.
     Client gửi JSON: {"type":..., "payload": {...}, "player_id":...}
     """
     print(f"Client từ {addr} kết nối")
+    # thêm vào danh sách client toàn cục
+    try:
+        clients.add(conn)
+    except Exception:
+        pass
     player_id = None
     current_room = None
     try:
@@ -75,6 +104,8 @@ def handle_client(conn: socket.socket, addr):
                 room.add_player(player_id or addr[1], conn)
                 current_room = room
                 send_msg(conn, {'type': 'ROOM_CREATED', 'payload': {'room': room_id}})
+                # thông báo cập nhật danh sách phòng cho tất cả client
+                broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
             elif mtype == 'JOIN_ROOM':
                 room_id = payload.get('room')
@@ -89,6 +120,8 @@ def handle_client(conn: socket.socket, addr):
                 current_room = room
                 # thông báo cho cả phòng
                 broadcast_room(room, {'type': 'ROOM_JOINED', 'payload': {'players': list(room.players.keys())}})
+                # cập nhật số người chơi phòng cho tất cả
+                broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
             elif mtype == 'LIST_ROOMS':
                 # Trả về danh sách phòng hiện có với số lượng người chơi
@@ -109,6 +142,8 @@ def handle_client(conn: socket.socket, addr):
                 # chỉ xoá nếu rỗng
                 del rooms[room_id]
                 send_msg(conn, {'type': 'ROOM_DELETED', 'payload': {'room': room_id}})
+                # cập nhật danh sách phòng
+                broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
             elif mtype == 'RENAME_ROOM':
                 room_id = payload.get('room')
@@ -130,6 +165,7 @@ def handle_client(conn: socket.socket, addr):
                 rooms[new_name] = rooms.pop(room_id)
                 rooms[new_name].room_id = new_name
                 send_msg(conn, {'type': 'ROOM_RENAMED', 'payload': {'old': room_id, 'new': new_name}})
+                broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
             elif mtype == 'MOVE':
                 if current_room is None:
@@ -171,6 +207,8 @@ def handle_client(conn: socket.socket, addr):
                     current_room.remove_player(player_id)
                     broadcast_room(current_room, {'type': 'PLAYER_LEFT', 'payload': {'player': player_id}})
                     current_room = None
+                    # cập nhật số người chơi
+                    broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
             else:
                 send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Unknown type'}})
@@ -186,6 +224,15 @@ def handle_client(conn: socket.socket, addr):
         # nếu ở trong phòng, remove
         if current_room and player_id:
             current_room.remove_player(player_id)
+            try:
+                broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
+            except Exception:
+                pass
+        # loại bỏ khỏi danh sách client toàn cục
+        try:
+            clients.remove(conn)
+        except Exception:
+            pass
 
 
 def main():
