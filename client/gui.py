@@ -25,32 +25,46 @@ PORT = 5000
 class CaroGUI:
     def __init__(self, root):
         self.root = root
-        root.title('Caro Client')
+        root.title('Caro — Gomoku')
+        try:
+            # Áp dụng ttk theme cho cảm giác hiện đại hơn
+            style = ttk.Style()
+            theme = 'clam' if 'clam' in style.theme_names() else style.theme_use()
+            style.theme_use(theme)
+            style.configure('TButton', padding=6)
+            style.configure('Header.TLabel', font=('Segoe UI', 11, 'bold'))
+        except Exception:
+            pass
 
         self.player_id = f'P{root.winfo_id()}'
 
-        top = tk.Frame(root)
+        top = ttk.Frame(root)
         top.pack(side=tk.TOP, fill=tk.X)
 
-        self.connect_btn = tk.Button(top, text='Kết nối', command=self.connect)
-        self.connect_btn.pack(side=tk.LEFT)
+        self.connect_btn = ttk.Button(top, text='Kết nối', command=self.connect)
+        self.connect_btn.pack(side=tk.LEFT, padx=(6, 0), pady=6)
 
-        self.create_btn = tk.Button(top, text='Tạo phòng', command=self.create_room)
-        self.create_btn.pack(side=tk.LEFT)
+        self.create_btn = ttk.Button(top, text='Tạo phòng', command=self.create_room)
+        self.create_btn.pack(side=tk.LEFT, padx=6, pady=6)
 
-        self.join_btn = tk.Button(top, text='Tham gia phòng', command=self.join_room)
-        self.join_btn.pack(side=tk.LEFT)
+        self.join_btn = ttk.Button(top, text='Tham gia phòng', command=self.join_room)
+        self.join_btn.pack(side=tk.LEFT, padx=6, pady=6)
 
-        self.leave_btn = tk.Button(top, text='Rời phòng', command=self.leave_room)
-        self.leave_btn.pack(side=tk.LEFT)
+        self.leave_btn = ttk.Button(top, text='Rời phòng', command=self.leave_room)
+        self.leave_btn.pack(side=tk.LEFT, padx=6, pady=6)
 
-        self.status_lbl = tk.Label(top, text='Chưa kết nối')
+        # Nút ẩn/hiện bảng phòng
+        self.sidebar_visible = True
+        self.toggle_side_btn = ttk.Button(top, text='Ẩn phòng', command=self.toggle_sidebar)
+        self.toggle_side_btn.pack(side=tk.LEFT, padx=6, pady=6)
+
+        self.status_lbl = ttk.Label(top, text='Chưa kết nối')
         self.status_lbl.pack(side=tk.LEFT, padx=10)
 
         # Sidebar hiển thị danh sách phòng
-        side = tk.Frame(root)
+        side = ttk.Frame(root)
         side.pack(side=tk.RIGHT, fill=tk.Y, padx=6, pady=6)
-        tk.Label(side, text='Phòng hiện có').pack()
+        ttk.Label(side, text='Phòng hiện có', style='Header.TLabel').pack()
     # Treeview với cột: Phòng, Người, Người tạo
         self.room_tree = ttk.Treeview(side, columns=('room', 'players', 'creator'), show='headings', height=20)
         self.room_tree.heading('room', text='Phòng')
@@ -60,7 +74,7 @@ class CaroGUI:
         self.room_tree.column('players', width=50, anchor='center')
         self.room_tree.column('creator', width=100, anchor='w')
         self.room_tree.pack(side=tk.LEFT, fill=tk.Y)
-        rb_scroll = tk.Scrollbar(side, orient=tk.VERTICAL, command=self.room_tree.yview)
+        rb_scroll = ttk.Scrollbar(side, orient=tk.VERTICAL, command=self.room_tree.yview)
         rb_scroll.pack(side=tk.LEFT, fill=tk.Y)
         self.room_tree.config(yscrollcommand=rb_scroll.set)
     # double-click để tham gia
@@ -72,23 +86,29 @@ class CaroGUI:
         self.room_menu.add_command(label='Xóa', command=self.delete_selected_room)
         self.room_tree.bind('<Button-3>', self._on_room_right_click)
     # hiển thị số phòng
-        self.room_count_lbl = tk.Label(side, text='0 phòng')
+        self.room_count_lbl = ttk.Label(side, text='0 phòng')
         self.room_count_lbl.pack(pady=(6,0))
 
-        btn_frame = tk.Frame(side)
+        btn_frame = ttk.Frame(side)
         btn_frame.pack(fill=tk.X, pady=4)
-        tk.Button(btn_frame, text='Làm mới', command=lambda: self.refresh_rooms()).pack(fill=tk.X)
-        tk.Button(btn_frame, text='Tham gia', command=lambda: self.join_selected_room()).pack(fill=tk.X)
-        tk.Button(btn_frame, text='Đổi tên', command=lambda: self.rename_selected_room()).pack(fill=tk.X)
-        tk.Button(btn_frame, text='Xóa', command=lambda: self.delete_selected_room()).pack(fill=tk.X)
+        ttk.Button(btn_frame, text='Làm mới', command=lambda: self.refresh_rooms()).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text='Tham gia', command=lambda: self.join_selected_room()).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text='Đổi tên', command=lambda: self.rename_selected_room()).pack(fill=tk.X, pady=2)
+        ttk.Button(btn_frame, text='Xóa', command=lambda: self.delete_selected_room()).pack(fill=tk.X, pady=2)
 
         # canvas bàn cờ
         self.size = 15
         self.cell = 40
         # Canvas kích thước chính xác theo số ô; mỗi ô là một ô vuông
-        self.canvas = tk.Canvas(root, width=self.size*self.cell, height=self.size*self.cell, bg='white')
-        self.canvas.pack()
+        board_bg = '#f5deb3'  # wheat
+        self.board_bg = board_bg
+        self.grid_color = '#b29762'
+        self.canvas = tk.Canvas(root, width=self.size*self.cell, height=self.size*self.cell, bg=board_bg, highlightthickness=0)
+        # Đặt canvas bên trái và cho phép mở rộng để tương tác tốt với sidebar
+        self.canvas.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         self.canvas.bind('<Button-1>', self.on_click)
+        # Lắng nghe thay đổi kích thước để scale theo tỉ lệ
+        self.canvas.bind('<Configure>', self._on_canvas_resize)
 
         # queue để nhận message từ thread mạng
         self.q = queue.Queue()
@@ -101,17 +121,23 @@ class CaroGUI:
         # flag to disable input during animations
         self._animating = False
 
-        # vẽ lưới bằng rectangles (ô vuông) — mỗi ô có tag 'cell'
-        for y in range(self.size):
-            for x in range(self.size):
-                x1 = x * self.cell
-                y1 = y * self.cell
-                x2 = x1 + self.cell
-                y2 = y1 + self.cell
-                self.canvas.create_rectangle(x1, y1, x2, y2, outline='black', fill='lightgray', tags=('cell', f'cell_{x}_{y}'))
+        # vẽ lưới lần đầu
+        self._draw_grid()
+
+        # thanh trạng thái/hướng dẫn cuối cửa sổ
+        try:
+            bottom = ttk.Frame(root)
+            bottom.pack(side=tk.BOTTOM, fill=tk.X)
+            self.hint_lbl = ttk.Label(bottom, text='Gợi ý: Nhấp vào bàn cờ để đánh; tạo phòng để chơi với người khác.')
+            self.hint_lbl.pack(side=tk.LEFT, padx=8, pady=6)
+        except Exception:
+            pass
 
         # kiểm tra queue theo chu kỳ
         self.root.after(100, self._process_queue)
+
+        # Lưu tham chiếu để toggle
+        self.side_frame = side
 
     def connect(self):
         if self.conn:
@@ -240,6 +266,29 @@ class CaroGUI:
             pass
         self.root.after(100, self._process_queue)
 
+    def toggle_sidebar(self):
+        if self.sidebar_visible:
+            try:
+                self.side_frame.pack_forget()
+            except Exception:
+                pass
+            self.sidebar_visible = False
+            try:
+                self.toggle_side_btn.config(text='Hiện phòng')
+            except Exception:
+                pass
+        else:
+            try:
+                # Pack trước canvas để bố cục đúng (sidebar bám phải, canvas chiếm phần còn lại)
+                self.side_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=6, pady=6, before=self.canvas)
+            except Exception:
+                pass
+            self.sidebar_visible = True
+            try:
+                self.toggle_side_btn.config(text='Ẩn phòng')
+            except Exception:
+                pass
+
     def _on_room_right_click(self, event):
         # Select the row under cursor and popup context menu
         try:
@@ -312,24 +361,65 @@ class CaroGUI:
             print('CHAT', payload)
 
     def _draw_board(self):
-        # Xóa các text quân cờ cũ
+        # Xóa các quân cờ cũ
         self.canvas.delete('stone')
-    # Dùng font lớn cho X/O
-        try:
-            font = ('Arial', int(self.cell*0.5), 'bold')
-        except Exception:
-            font = None
 
+        cw = max(self.canvas.winfo_width(), 1)
+        ch = max(self.canvas.winfo_height(), 1)
+        grid_pix = self.size * self.cell
+        ox = max((cw - grid_pix) // 2, 0)
+        oy = max((ch - grid_pix) // 2, 0)
+
+        pad = int(self.cell * 0.18)
         for y in range(self.size):
             for x in range(self.size):
                 v = self.board[y][x]
                 if v != 0:
-                    cx = x*self.cell + self.cell/2
-                    cy = y*self.cell + self.cell/2
-                    symbol = 'X' if v == 1 else 'O'
-                    color = 'black' if v == 1 else 'red'
-                    # vẽ ký tự ở giữa ô
-                    self.canvas.create_text(cx, cy, text=symbol, fill=color, font=font, tags='stone')
+                    x1 = ox + x * self.cell + pad
+                    y1 = oy + y * self.cell + pad
+                    x2 = x1 + (self.cell - 2*pad)
+                    y2 = y1 + (self.cell - 2*pad)
+                    if v == 1:
+                        fill = '#222222'  # đen
+                        outline = '#111111'
+                    else:
+                        fill = '#f7f7f7'  # trắng
+                        outline = '#d0d0d0'
+                    self.canvas.create_oval(x1, y1, x2, y2, fill=fill, outline=outline, width=2, tags='stone')
+
+    def _draw_grid(self):
+        # Vẽ lại lưới theo kích thước hiện tại và căn giữa
+        self.canvas.delete('cell')
+        cw = max(self.canvas.winfo_width(), 1)
+        ch = max(self.canvas.winfo_height(), 1)
+        cell = self.cell
+        grid_pix = self.size * cell
+        ox = max((cw - grid_pix) // 2, 0)
+        oy = max((ch - grid_pix) // 2, 0)
+        for y in range(self.size):
+            for x in range(self.size):
+                x1 = ox + x * cell
+                y1 = oy + y * cell
+                x2 = x1 + cell
+                y2 = y1 + cell
+                self.canvas.create_rectangle(
+                    x1, y1, x2, y2,
+                    outline=self.grid_color,
+                    fill=self.board_bg,
+                    tags=('cell', f'cell_{x}_{y}')
+                )
+
+    def _on_canvas_resize(self, event):
+        try:
+            # Tính kích thước ô mới theo cạnh ngắn hơn để giữ tỉ lệ vuông
+            new_cell = max(16, int(min(event.width, event.height) / max(self.size, 1)))
+        except Exception:
+            new_cell = self.cell
+        if new_cell != self.cell:
+            self.cell = new_cell
+        # Luôn vẽ lại để căn giữa chính xác
+        self._draw_grid()
+        self._draw_board()
 
     def find_winning_line(self, board, win_len=5):
         """Tìm và trả về danh sách (x,y) của đường thắng nếu có, ngược lại trả về [].
