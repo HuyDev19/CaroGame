@@ -31,6 +31,17 @@ class CaroGUI:
         # Cấu hình style hiện đại
         self.setup_styles()
         
+        # Phím tắt: Ctrl+R refresh, Ctrl+J join, Ctrl+B toggle sidebar
+        root.bind('<Control-r>', lambda e: self.refresh_rooms())
+        root.bind('<Control-R>', lambda e: self.refresh_rooms())
+        root.bind('<Control-j>', lambda e: self.join_selected_room())
+        root.bind('<Control-J>', lambda e: self.join_selected_room())
+        root.bind('<Control-b>', lambda e: self.toggle_sidebar())
+        root.bind('<Control-B>', lambda e: self.toggle_sidebar())
+
+        # Bắt sự kiện đóng cửa sổ để gửi LEAVE và ngắt kết nối đúng cách
+        root.protocol("WM_DELETE_WINDOW", self.on_close)
+
         self.player_id = f'P{root.winfo_id()}'
         self.current_room = None
         self.ready_status = False
@@ -391,8 +402,10 @@ class CaroGUI:
             self.show_notification("Kết nối server thành công! 🎉", "success")
             self.refresh_rooms()
         except Exception as e:
-            self.show_notification(f"Không thể kết nối tới server: {e}", "error")
-            self.status_lbl.config(text='🔴 Lỗi kết nối', fg='#e74c3c')
+            # Nếu kết nối thất bại, thử lại nhẹ (non-blocking) sau 2s
+            self.show_notification(f"Không thể kết nối: {e}. Thử lại sau 2s...", "warning")
+            self.root.after(2000, lambda: self.connect())
+            return
 
     def create_room(self):
         if not self.conn:
@@ -745,6 +758,36 @@ class CaroGUI:
                     callback()
         
         pulse()
+
+    def request_rematch(self):
+        """Gửi yêu cầu chơi lại (rematch) tới server."""
+        if not self.conn or not self.current_room:
+            self.show_notification("Bạn phải ở trong phòng để yêu cầu chơi lại.", "warning")
+            return
+        try:
+            # Tên event 'REPLAY_REQUEST' có thể thay đổi tùy server
+            self.conn.send('REPLAY_REQUEST', {'room': self.current_room})
+            self.show_notification("Đã gửi yêu cầu chơi lại tới đối thủ.", "info")
+        except Exception as e:
+            self.show_notification(f'Không thể gửi yêu cầu chơi lại: {e}', "error")
+
+    def on_close(self):
+        """Gửi LEAVE (nếu đang trong phòng) và đóng cửa sổ."""
+        try:
+            if self.conn:
+                if self.current_room:
+                    try:
+                        self.conn.send('LEAVE', {})
+                    except Exception:
+                        pass
+                # Nếu ClientConnection có method close/disconnect, gọi ở đây (tùy implementation)
+                if hasattr(self.conn, 'close'):
+                    try:
+                        self.conn.close()
+                    except Exception:
+                        pass
+        finally:
+            self.root.destroy()
 
 
 if __name__ == '__main__':
