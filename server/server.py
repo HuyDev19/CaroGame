@@ -64,7 +64,7 @@ def broadcast_all(msg: dict) -> None:
 def build_rooms_list() -> list:
     res = []
     for rid, r in rooms.items():
-        res.append({'room': rid, 'players': len(r.players)})
+        res.append({'room': rid, 'players': len(r.players), 'creator': r.creator})
     return res
 
 def handle_client(conn: socket.socket, addr):
@@ -101,7 +101,7 @@ def handle_client(conn: socket.socket, addr):
                 creator = player_id or str(addr[1])
                 room = Room(room_id, creator=creator)
                 rooms[room_id] = room
-                room.add_player(player_id or addr[1], conn)
+                room.add_player(player_id or str(addr[1]), conn)
                 current_room = room
                 send_msg(conn, {'type': 'ROOM_CREATED', 'payload': {'room': room_id}})
                 # thông báo cập nhật danh sách phòng cho tất cả client
@@ -113,13 +113,13 @@ def handle_client(conn: socket.socket, addr):
                 if not room:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Room not found'}})
                     continue
-                ok = room.add_player(player_id or addr[1], conn)
+                ok = room.add_player(player_id or str(addr[1]), conn)
                 if not ok:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Room full'}})
                     continue
                 current_room = room
                 # thông báo cho cả phòng
-                broadcast_room(room, {'type': 'ROOM_JOINED', 'payload': {'players': list(room.players.keys())}})
+                broadcast_room(room, {'type': 'ROOM_JOINED', 'payload': {'room': room_id, 'players': list(room.players.keys())}})
                 # cập nhật số người chơi phòng cho tất cả
                 broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
@@ -127,7 +127,7 @@ def handle_client(conn: socket.socket, addr):
                 # Trả về danh sách phòng hiện có với số lượng người chơi
                 res = []
                 for rid, r in rooms.items():
-                    res.append({'room': rid, 'players': len(r.players)})
+                    res.append({'room': rid, 'players': len(r.players), 'creator': r.creator})
                 send_msg(conn, {'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': res}})
 
             elif mtype == 'DELETE_ROOM':
@@ -167,6 +167,92 @@ def handle_client(conn: socket.socket, addr):
                 send_msg(conn, {'type': 'ROOM_RENAMED', 'payload': {'old': room_id, 'new': new_name}})
                 broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
+            # THÊM XỬ LÝ READY VÀ NOT_READY
+            elif mtype == 'READY':
+                if current_room is None:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Not in room'}})
+                    continue
+                room_id = payload.get('room')
+                if room_id != current_room.room_id:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Room mismatch'}})
+                    continue
+                
+                # Đánh dấu player là ready
+                current_room.set_player_ready(player_id, True)
+                # Broadcast trạng thái ready cho tất cả trong phòng
+                broadcast_room(current_room, {
+                    'type': 'PLAYER_READY', 
+                    'payload': {
+                        'player': player_id, 
+                        'ready': True,
+                        'players_ready': current_room.players_ready
+                    }
+                })
+                
+                # Kiểm tra nếu cả 2 đều ready thì tự động bắt đầu game
+                if current_room.all_players_ready() and len(current_room.players) == 2:
+                    # Reset game state và bắt đầu game mới
+                    current_room.reset_game()
+                    broadcast_room(current_room, {
+                        'type': 'GAME_START', 
+                        'payload': {}
+                    })
+                    # Gửi trạng thái game mới
+                    broadcast_room(current_room, {
+                        'type': 'GAME_STATE', 
+                        'payload': {
+                            'board': current_room.game.board, 
+                            'turn': current_room.game.turn, 
+                            'winner': current_room.game.winner
+                        }
+                    })
+
+            elif mtype == 'NOT_READY':
+                if current_room is None:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Not in room'}})
+                    continue
+                room_id = payload.get('room')
+                if room_id != current_room.room_id:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Room mismatch'}})
+                    continue
+                
+                # Đánh dấu player là not ready
+                current_room.set_player_ready(player_id, False)
+                # Broadcast trạng thái not ready cho tất cả trong phòng
+                broadcast_room(current_room, {
+                    'type': 'PLAYER_READY', 
+                    'payload': {
+                        'player': player_id, 
+                        'ready': False,
+                        'players_ready': current_room.players_ready
+                    }
+                })
+
+            elif mtype == 'START_GAME':
+                if current_room is None:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Not in room'}})
+                    continue
+                # Chỉ bắt đầu game nếu có đủ 2 người chơi
+                if len(current_room.players) < 2:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Need 2 players to start'}})
+                    continue
+                
+                # Reset game state và bắt đầu game mới
+                current_room.reset_game()
+                broadcast_room(current_room, {
+                    'type': 'GAME_START', 
+                    'payload': {}
+                })
+                # Gửi trạng thái game mới
+                broadcast_room(current_room, {
+                    'type': 'GAME_STATE', 
+                    'payload': {
+                        'board': current_room.game.board, 
+                        'turn': current_room.game.turn, 
+                        'winner': current_room.game.winner
+                    }
+                })
+
             elif mtype == 'MOVE':
                 if current_room is None:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Not in room'}})
@@ -196,19 +282,49 @@ def handle_client(conn: socket.socket, addr):
                     continue
 
                 # broadcast update bàn cờ
-                broadcast_room(current_room, {'type': 'GAME_STATE', 'payload': {'board': gs.board, 'turn': gs.turn, 'winner': gs.winner}})
+                broadcast_room(current_room, {
+                    'type': 'GAME_STATE', 
+                    'payload': {
+                        'board': gs.board, 
+                        'turn': gs.turn, 
+                        'winner': gs.winner
+                    }
+                })
 
             elif mtype == 'CHAT':
                 if current_room:
-                    broadcast_room(current_room, {'type': 'CHAT', 'payload': {'from': player_id, 'text': payload.get('text')}})
+                    broadcast_room(current_room, {
+                        'type': 'CHAT', 
+                        'payload': {
+                            'from': player_id, 
+                            'text': payload.get('text')
+                        }
+                    })
 
             elif mtype == 'LEAVE':
+                # Cho phép LEAVE idempotent: trả về OK ngay cả khi không ở phòng
                 if current_room:
+                    # Reset trạng thái ready khi rời phòng
+                    current_room.set_player_ready(player_id, False)
                     current_room.remove_player(player_id)
-                    broadcast_room(current_room, {'type': 'PLAYER_LEFT', 'payload': {'player': player_id}})
+                    broadcast_room(current_room, {
+                        'type': 'PLAYER_LEFT', 
+                        'payload': {
+                            'player': player_id
+                        }
+                    })
+                    # Broadcast trạng thái ready cập nhật
+                    broadcast_room(current_room, {
+                        'type': 'PLAYER_READY', 
+                        'payload': {
+                            'players_ready': current_room.players_ready
+                        }
+                    })
                     current_room = None
                     # cập nhật số người chơi
                     broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
+                # xác nhận tới client đã xử lý LEAVE
+                send_msg(conn, {'type': 'LEFT', 'payload': {}})
 
             else:
                 send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Unknown type'}})
@@ -223,8 +339,23 @@ def handle_client(conn: socket.socket, addr):
             pass
         # nếu ở trong phòng, remove
         if current_room and player_id:
+            # Reset trạng thái ready khi disconnect
+            current_room.set_player_ready(player_id, False)
             current_room.remove_player(player_id)
             try:
+                broadcast_room(current_room, {
+                    'type': 'PLAYER_LEFT', 
+                    'payload': {
+                        'player': player_id
+                    }
+                })
+                # Broadcast trạng thái ready cập nhật
+                broadcast_room(current_room, {
+                    'type': 'PLAYER_READY', 
+                    'payload': {
+                        'players_ready': current_room.players_ready
+                    }
+                })
                 broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
             except Exception:
                 pass

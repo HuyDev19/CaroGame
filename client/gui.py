@@ -26,188 +26,426 @@ class CaroGUI:
     def __init__(self, root):
         self.root = root
         root.title('Caro — Gomoku')
-        try:
-            # Áp dụng ttk theme cho cảm giác hiện đại hơn
-            style = ttk.Style()
-            theme = 'clam' if 'clam' in style.theme_names() else style.theme_use()
-            style.theme_use(theme)
-            style.configure('TButton', padding=6)
-            style.configure('Header.TLabel', font=('Segoe UI', 11, 'bold'))
-        except Exception:
-            pass
-
+        root.configure(bg='#2c3e50')
+        
+        # Cấu hình style hiện đại
+        self.setup_styles()
+        
         self.player_id = f'P{root.winfo_id()}'
+        self.current_room = None
+        self.ready_status = False
+        self.players_ready = {}  # Dictionary để theo dõi trạng thái sẵn sàng của người chơi
+        self.game_started = False  # Trạng thái game đã bắt đầu chưa
+        self.game_ended = False  # Trạng thái game kết thúc
+        self.sidebar_visible = True  # Trạng thái hiển thị của sidebar
 
-        top = ttk.Frame(root)
-        top.pack(side=tk.TOP, fill=tk.X)
+        # Header với gradient
+        header = tk.Frame(root, bg='#34495e', height=80)
+        header.pack(side=tk.TOP, fill=tk.X)
+        header.pack_propagate(False)
+        
+        # Tiêu đề game
+        title_label = tk.Label(header, text='🎮 CARO VIỆT NAM', font=('Segoe UI', 20, 'bold'), 
+                              fg='white', bg='#34495e')
+        title_label.pack(side=tk.LEFT, padx=20, pady=20)
+        
+        # Frame chứa các nút điều khiển
+        control_frame = tk.Frame(header, bg='#34495e')
+        control_frame.pack(side=tk.RIGHT, padx=20, pady=15)
+        
+        # Các nút điều khiển
+        self.connect_btn = ttk.Button(control_frame, text='🔗 Kết nối', command=self.connect)
+        self.connect_btn.pack(side=tk.LEFT, padx=3)
+        
+        self.create_btn = ttk.Button(control_frame, text='➕ Tạo phòng', command=self.create_room, state='disabled')
+        self.create_btn.pack(side=tk.LEFT, padx=3)
+        
+        self.join_btn = ttk.Button(control_frame, text='🚪 Tham gia', command=self.join_room, state='disabled')
+        self.join_btn.pack(side=tk.LEFT, padx=3)
+        
+        self.leave_btn = ttk.Button(control_frame, text='👋 Rời phòng', command=self.leave_room, state='disabled')
+        self.leave_btn.pack(side=tk.LEFT, padx=3)
 
-        self.connect_btn = ttk.Button(top, text='Kết nối', command=self.connect)
-        self.connect_btn.pack(side=tk.LEFT, padx=(6, 0), pady=6)
+        self.ready_btn = ttk.Button(control_frame, text='⚡ Sẵn sàng', command=self.toggle_ready, state='disabled')
+        self.ready_btn.pack(side=tk.LEFT, padx=3)
 
-        self.create_btn = ttk.Button(top, text='Tạo phòng', command=self.create_room)
-        self.create_btn.pack(side=tk.LEFT, padx=6, pady=6)
+        # Nút ẩn/hiện sidebar
+        self.toggle_sidebar_btn = ttk.Button(control_frame, text='📋', command=self.toggle_sidebar, width=3)
+        self.toggle_sidebar_btn.pack(side=tk.LEFT, padx=3)
 
-        self.join_btn = ttk.Button(top, text='Tham gia phòng', command=self.join_room)
-        self.join_btn.pack(side=tk.LEFT, padx=6, pady=6)
+        # Main content area
+        self.main_frame = tk.Frame(root, bg='#ecf0f1')
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left panel - Bàn cờ và thông tin
+        self.left_panel = tk.Frame(self.main_frame, bg='#ecf0f1')
+        self.left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Status và info panel
+        info_frame = tk.Frame(self.left_panel, bg='white', relief='ridge', bd=2)
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.status_lbl = tk.Label(info_frame, text='🔴 Chưa kết nối server', font=('Segoe UI', 11), 
+                                  fg='#e74c3c', bg='white')
+        self.status_lbl.pack(side=tk.LEFT, padx=15, pady=10)
 
-        self.leave_btn = ttk.Button(top, text='Rời phòng', command=self.leave_room)
-        self.leave_btn.pack(side=tk.LEFT, padx=6, pady=6)
-
-        # Nút ẩn/hiện bảng phòng
-        self.sidebar_visible = True
-        self.toggle_side_btn = ttk.Button(top, text='Ẩn phòng', command=self.toggle_sidebar)
-        self.toggle_side_btn.pack(side=tk.LEFT, padx=6, pady=6)
-
-        self.status_lbl = ttk.Label(top, text='Chưa kết nối')
-        self.status_lbl.pack(side=tk.LEFT, padx=10)
-
-        # Khu vực nội dung chính: Panedwindow để kéo thay đổi kích thước sidebar
-        self.pw = ttk.Panedwindow(root, orient=tk.HORIZONTAL)
-        self.pw.pack(fill=tk.BOTH, expand=True)
-        self.left_pane = ttk.Frame(self.pw)
-        self.pw.add(self.left_pane, weight=3)
-
-        # Sidebar hiển thị danh sách phòng
-        side = ttk.Frame(self.pw, width=260)
-        self.pw.add(side, weight=1)
-        ttk.Label(side, text='Phòng hiện có', style='Header.TLabel').pack()
-    # Treeview với cột: Phòng, Người, Người tạo
-        self.room_tree = ttk.Treeview(side, columns=('room', 'players', 'creator'), show='headings', height=20)
-        self.room_tree.heading('room', text='Phòng')
-        self.room_tree.heading('players', text='Người')
-        self.room_tree.heading('creator', text='Người tạo')
-        self.room_tree.column('room', width=160, anchor='w')
-        self.room_tree.column('players', width=50, anchor='center')
-        self.room_tree.column('creator', width=100, anchor='w')
-        self.room_tree.pack(side=tk.LEFT, fill=tk.Y)
-        rb_scroll = ttk.Scrollbar(side, orient=tk.VERTICAL, command=self.room_tree.yview)
-        rb_scroll.pack(side=tk.LEFT, fill=tk.Y)
-        self.room_tree.config(yscrollcommand=rb_scroll.set)
-    # double-click để tham gia
-        self.room_tree.bind('<Double-1>', lambda e: self.join_selected_room())
-    # menu chuột phải (context menu)
-        self.room_menu = tk.Menu(root, tearoff=0)
-        self.room_menu.add_command(label='Tham gia', command=self.join_selected_room)
-        self.room_menu.add_command(label='Đổi tên', command=self.rename_selected_room)
-        self.room_menu.add_command(label='Xóa', command=self.delete_selected_room)
-        self.room_tree.bind('<Button-3>', self._on_room_right_click)
-    # hiển thị số phòng
-        self.room_count_lbl = ttk.Label(side, text='0 phòng')
-        self.room_count_lbl.pack(pady=(6,0))
-
-        btn_frame = ttk.Frame(side)
-        btn_frame.pack(fill=tk.X, pady=4)
-        ttk.Button(btn_frame, text='Làm mới', command=lambda: self.refresh_rooms()).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text='Tham gia', command=lambda: self.join_selected_room()).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text='Đổi tên', command=lambda: self.rename_selected_room()).pack(fill=tk.X, pady=2)
-        ttk.Button(btn_frame, text='Xóa', command=lambda: self.delete_selected_room()).pack(fill=tk.X, pady=2)
-
-        # canvas bàn cờ
+        self.room_info_lbl = tk.Label(info_frame, text='', font=('Segoe UI', 10), 
+                                     fg='#7f8c8d', bg='white')
+        self.room_info_lbl.pack(side=tk.RIGHT, padx=15, pady=10)
+        
+        # Bàn cờ container với shadow effect
+        board_container = tk.Frame(self.left_panel, bg='#bdc3c7', padx=3, pady=3)
+        board_container.pack(expand=True, fill=tk.BOTH)
+        
+        # Canvas bàn cờ
         self.size = 15
         self.cell = 40
-        # Canvas kích thước chính xác theo số ô; mỗi ô là một ô vuông
-        board_bg = '#f5deb3'  # wheat
-        self.board_bg = board_bg
-        self.grid_color = '#b29762'
-        self.canvas = tk.Canvas(self.left_pane, width=self.size*self.cell, height=self.size*self.cell, bg=board_bg, highlightthickness=0)
-        # Canvas chiếm toàn bộ khu vực trái
-        self.canvas.pack(expand=True, fill=tk.BOTH)
+        self.board_bg = '#e8c87e'  # Màu gỗ nhạt
+        self.grid_color = '#8b6914'  # Màu nâu đậm
+        self.canvas = tk.Canvas(board_container, width=self.size*self.cell, height=self.size*self.cell, 
+                               bg=self.board_bg, highlightthickness=0, relief='sunken', bd=3)
+        self.canvas.pack(expand=True, padx=2, pady=2)
         self.canvas.bind('<Button-1>', self.on_click)
-        # Lắng nghe thay đổi kích thước để scale theo tỉ lệ
         self.canvas.bind('<Configure>', self._on_canvas_resize)
+
+        # Panel thông báo
+        self.notification_frame = tk.Frame(self.left_panel, bg='#34495e', height=50)
+        self.notification_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        self.notification_frame.pack_propagate(False)
+        
+        self.notification_label = tk.Label(self.notification_frame, text='Chào mừng đến với Caro Việt Nam! 🎮', font=('Segoe UI', 10), 
+                                         fg='white', bg='#34495e', wraplength=600)
+        self.notification_label.pack(expand=True, pady=15)
+
+        # Right panel - Danh sách phòng và trạng thái
+        self.right_panel = tk.Frame(self.main_frame, bg='white', width=320, relief='ridge', bd=2)
+        self.right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
+        self.right_panel.pack_propagate(False)
+        
+        # Header danh sách phòng
+        room_header = tk.Frame(self.right_panel, bg='#3498db', height=50)
+        room_header.pack(fill=tk.X)
+        room_header.pack_propagate(False)
+        
+        room_title = tk.Label(room_header, text='🎯 DANH SÁCH PHÒNG', font=('Segoe UI', 12, 'bold'), 
+                            fg='white', bg='#3498db')
+        room_title.pack(side=tk.LEFT, padx=15, pady=15)
+        
+        # Panel trạng thái người chơi trong phòng
+        self.players_frame = tk.Frame(self.right_panel, bg='#f8f9fa', height=120)
+        self.players_frame.pack(fill=tk.X, padx=10, pady=10)
+        self.players_frame.pack_propagate(False)
+        
+        tk.Label(self.players_frame, text='TRẠNG THÁI NGƯỜI CHƠI', font=('Segoe UI', 10, 'bold'), 
+                bg='#f8f9fa', fg='#2c3e50').pack(pady=(10, 5))
+        
+        self.player1_status = tk.Label(self.players_frame, text='Người chơi 1: 🔴 Chưa sẵn sàng', 
+                                      font=('Segoe UI', 9), bg='#f8f9fa', fg='#e74c3c')
+        self.player1_status.pack(anchor='w', padx=10)
+        
+        self.player2_status = tk.Label(self.players_frame, text='Người chơi 2: 🔴 Chưa sẵn sàng', 
+                                      font=('Segoe UI', 9), bg='#f8f9fa', fg='#e74c3c')
+        self.player2_status.pack(anchor='w', padx=10, pady=(2, 10))
+        
+        self.game_status = tk.Label(self.players_frame, text='🟡 Đang chờ người chơi...', 
+                                   font=('Segoe UI', 9, 'bold'), bg='#f8f9fa', fg='#f39c12')
+        self.game_status.pack(anchor='w', padx=10, pady=(5, 0))
+        
+        # Controls cho phòng
+        room_controls = tk.Frame(self.right_panel, bg='#ecf0f1', pady=10)
+        room_controls.pack(fill=tk.X, padx=10)
+        
+        ttk.Button(room_controls, text='🔄 Làm mới', command=self.refresh_rooms, width=12).pack(side=tk.LEFT, padx=2)
+        ttk.Button(room_controls, text='🎮 Tham gia', command=self.join_selected_room, width=12).pack(side=tk.RIGHT, padx=2)
+        
+        # Treeview danh sách phòng
+        tree_frame = tk.Frame(self.right_panel, bg='white')
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self.room_tree = ttk.Treeview(tree_frame, columns=('room', 'players', 'creator'), show='headings', height=12)
+        
+        # Định dạng cột
+        self.room_tree.heading('room', text='TÊN PHÒNG')
+        self.room_tree.heading('players', text='👤')
+        self.room_tree.heading('creator', text='NGƯỜI TẠO')
+        
+        self.room_tree.column('room', width=120, anchor='w')
+        self.room_tree.column('players', width=50, anchor='center')
+        self.room_tree.column('creator', width=120, anchor='w')
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.room_tree.yview)
+        self.room_tree.configure(yscrollcommand=scrollbar.set)
+        
+        self.room_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Bind events
+        self.room_tree.bind('<Double-1>', lambda e: self.join_selected_room())
+        
+        # Footer với thông tin
+        footer = tk.Frame(self.right_panel, bg='#34495e', height=40)
+        footer.pack(fill=tk.X, side=tk.BOTTOM)
+        footer.pack_propagate(False)
+        
+        self.room_count_lbl = tk.Label(footer, text='0 phòng', font=('Segoe UI', 9), 
+                                      fg='white', bg='#34495e')
+        self.room_count_lbl.pack(expand=True)
 
         # queue để nhận message từ thread mạng
         self.q = queue.Queue()
-
         self.conn = None
-        # cached rooms list as provided by server: list of dicts {room, players}
         self._rooms = []
-        # board[y][x]
         self.board = [[0]*self.size for _ in range(self.size)]
-        # flag to disable input during animations
         self._animating = False
 
-        # vẽ lưới lần đầu
+        # Vẽ lưới ban đầu
         self._draw_grid()
 
-        # thanh trạng thái/hướng dẫn cuối cửa sổ
-        try:
-            bottom = ttk.Frame(root)
-            bottom.pack(side=tk.BOTTOM, fill=tk.X)
-            self.hint_lbl = ttk.Label(bottom, text='Gợi ý: Nhấp vào bàn cờ để đánh; tạo phòng để chơi với người khác.')
-            self.hint_lbl.pack(side=tk.LEFT, padx=8, pady=6)
-        except Exception:
-            pass
-
-        # kiểm tra queue theo chu kỳ
+        # Kiểm tra queue theo chu kỳ
         self.root.after(100, self._process_queue)
 
-        # Lưu tham chiếu để toggle và nhớ bề rộng gần nhất
-        self.side_frame = side
-        self.sidebar_width = 260
+    def toggle_sidebar(self):
+        """Ẩn/hiện bảng danh sách phòng"""
+        if self.sidebar_visible:
+            # Ẩn sidebar
+            self.right_panel.pack_forget()
+            self.toggle_sidebar_btn.config(text='📋')
+            self.sidebar_visible = False
+            self.show_notification("Đã ẩn danh sách phòng", "info")
+        else:
+            # Hiện sidebar
+            self.right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False)
+            self.toggle_sidebar_btn.config(text='📋')
+            self.sidebar_visible = True
+            self.show_notification("Đã hiện danh sách phòng", "info")
+
+    def setup_styles(self):
+        """Cấu hình styles cho giao diện hiện đại"""
+        style = ttk.Style()
+        
+        # Cố gắng sử dụng theme hiện đại
+        modern_themes = ['vista', 'xpnative', 'winnative']
+        for theme in modern_themes:
+            if theme in style.theme_names():
+                style.theme_use(theme)
+                break
+        
+        # Configure styles - THAY ĐỔI MÀU Ở ĐÂY
+        style.configure('TButton', font=('Segoe UI', 9), padding=6,
+                    background='#3498db', foreground='Black',
+               relief='raised', borderwidth=5)
+        style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), 
+                    background='#2ecc71', foreground='Black',
+               relief='raised', borderwidth=5)
+        style.configure('Success.TButton', font=('Segoe UI', 9, 'bold'),
+                    background='#e74c3c', foreground='Black',
+               relief='raised', borderwidth=5)
+        style.configure('Disabled.TButton', font=('Segoe UI', 9),
+                    background="#77c284", foreground='Black',
+               relief='raised', borderwidth=5)
+        style.configure('Connected.TButton', font=('Segoe UI', 9, 'bold'),
+                    background='#9b59b6', foreground='Black',
+               relief='raised', borderwidth=5)
+        style.configure('Treeview', font=('Segoe UI', 9), rowheight=25)
+        style.configure('Treeview.Heading', font=('Segoe UI', 9, 'bold'), 
+                    background="#80e1f9")
+    
+        # Map styles for hover effects - THAY ĐỔI MÀU HOVER Ở ĐÂY
+        style.map('Accent.TButton', 
+                background=[('active', '#27ae60'), ('pressed', '#229954')])
+        style.map('Success.TButton',
+                background=[('active', '#c0392b'), ('pressed', '#a93226')])
+        style.map('Disabled.TButton',
+                background=[('active', '#7f8c8d'), ('pressed', '#95a5a6')])
+        style.map('Connected.TButton',
+                background=[('active', '#8e44ad'), ('pressed', '#7d3c98')])
+        style.map('TButton',
+                background=[('active', '#2980b9'), ('pressed', '#2471a3')])
+
+    def toggle_ready(self):
+        """Chuyển trạng thái sẵn sàng"""
+        if not self.conn or not self.current_room:
+            self.show_notification("Bạn chưa tham gia phòng nào!", "warning")
+            return
+            
+        # KHÔNG cho phép thay đổi trạng thái sẵn sàng khi đang trong trận
+        if self.game_started and not self.game_ended:
+            self.show_notification("Không thể thay đổi trạng thái sẵn sàng khi đang trong trận đấu!", "warning")
+            return
+            
+        self.ready_status = not self.ready_status
+        if self.ready_status:
+            self.ready_btn.config(style='Success.TButton', text='✅ Đã sẵn sàng')
+            self.show_notification("Bạn đã sẵn sàng tham gia trận đấu! 🎯", "success")
+            # Gửi trạng thái sẵn sàng tới server
+            try:
+                self.conn.send('READY', {'room': self.current_room})
+                # Cập nhật trạng thái ngay lập tức
+                self.update_player_status(self.player_id, True)
+            except Exception as e:
+                print(f"Lỗi gửi trạng thái sẵn sàng: {e}")
+                self.show_notification("Lỗi gửi trạng thái sẵn sàng!", "error")
+        else:
+            self.ready_btn.config(style='Accent.TButton', text='⚡ Sẵn sàng')
+            self.show_notification("Bạn đã hủy trạng thái sẵn sàng", "warning")
+            try:
+                self.conn.send('NOT_READY', {'room': self.current_room})
+                # Cập nhật trạng thái ngay lập tức
+                self.update_player_status(self.player_id, False)
+            except Exception as e:
+                print(f"Lỗi gửi trạng thái chưa sẵn sàng: {e}")
+                self.show_notification("Lỗi gửi trạng thái chưa sẵn sàng!", "error")
+
+    def show_notification(self, message, msg_type="info"):
+        """Hiển thị thông báo trên thanh thông báo"""
+        if msg_type == "info":
+            bg_color = "#3498db"
+            icon = "ℹ️"
+        elif msg_type == "success":
+            bg_color = "#27ae60"
+            icon = "✅"
+        elif msg_type == "warning":
+            bg_color = "#f39c12"
+            icon = "⚠️"
+        else:  # error
+            bg_color = "#e74c3c"
+            icon = "❌"
+            
+        self.notification_frame.config(bg=bg_color)
+        self.notification_label.config(bg=bg_color, text=f"{icon} {message}")
+        
+        # Tự động ẩn thông báo sau 5 giây (trừ thông báo lỗi)
+        if msg_type != "error":
+            self.root.after(5000, self.clear_notification)
+
+    def clear_notification(self):
+        """Xóa thông báo"""
+        self.notification_frame.config(bg='#34495e')
+        self.notification_label.config(bg='#34495e', text='')
+
+    def update_player_status(self, player_id, is_ready):
+        """Cập nhật trạng thái người chơi"""
+        self.players_ready[player_id] = is_ready
+        
+        # Cập nhật giao diện
+        players = list(self.players_ready.keys())
+        if len(players) >= 1:
+            status1 = "🟢 Sẵn sàng" if self.players_ready[players[0]] else "🔴 Chưa sẵn sàng"
+            color1 = "#27ae60" if self.players_ready[players[0]] else "#e74c3c"
+            self.player1_status.config(text=f'{players[0]}: {status1}', fg=color1)
+            
+        if len(players) >= 2:
+            status2 = "🟢 Sẵn sàng" if self.players_ready[players[1]] else "🔴 Chưa sẵn sàng"
+            color2 = "#27ae60" if self.players_ready[players[1]] else "#e74c3c"
+            self.player2_status.config(text=f'{players[1]}: {status2}', fg=color2)
+        else:
+            # Reset player 2 nếu chỉ có 1 người chơi
+            self.player2_status.config(text='Người chơi 2: 🔴 Chưa sẵn sàng', fg='#e74c3c')
+        
+        # Kiểm tra nếu cả hai đều sẵn sàng
+        if len(self.players_ready) == 2 and all(self.players_ready.values()):
+            self.game_status.config(text="🟢 Cả hai đã sẵn sàng! Game sẽ bắt đầu...", fg="#27ae60")
+            self.show_notification("Cả hai người chơi đã sẵn sàng! Trận đấu sẽ bắt đầu... 🎮", "success")
+        elif len(self.players_ready) == 2:
+            not_ready_players = [p for p, ready in self.players_ready.items() if not ready]
+            self.game_status.config(text="🔴 Đang chờ người chơi sẵn sàng...", fg="#e74c3c")
+            self.show_notification(f"{', '.join(not_ready_players)} chưa sẵn sàng ⏳", "warning")
+        else:
+            self.game_status.config(text="🟡 Đang chờ người chơi khác...", fg="#f39c12")
+
+    def start_game(self):
+        """Bắt đầu game khi cả hai đã sẵn sàng"""
+        if len(self.players_ready) == 2 and all(self.players_ready.values()):
+            self.game_started = True
+            self.game_ended = False
+            self.show_notification("🎮 Trận đấu bắt đầu! Lượt đi đầu tiên...", "success")
+            self.game_status.config(text="🎮 Game đang diễn ra...", fg="#9b59b6")
+            # VÔ HIỆU HÓA nút sẵn sàng khi game bắt đầu
+            self.ready_btn.config(state='disabled')
+            # Gửi thông báo bắt đầu game tới server
+            try:
+                self.conn.send('START_GAME', {'room': self.current_room})
+            except Exception as e:
+                print(f"Lỗi gửi bắt đầu game: {e}")
 
     def connect(self):
         if self.conn:
-            messagebox.showinfo('Info', 'Đã kết nối')
+            self.show_notification("Đã kết nối tới server rồi! 🟢", "info")
             return
         try:
+            self.show_notification("Đang kết nối tới server... ⏳", "info")
             self.conn = ClientConnection(HOST, PORT, self.player_id, lambda m: self.q.put(m))
             self.conn.connect()
-            self.status_lbl.config(text='Đã kết nối')
-            # tự động load danh sách phòng sau khi kết nối
+            
+            # Cập nhật giao diện khi kết nối thành công
+            self.status_lbl.config(text='🟢 Đã kết nối server', fg='#27ae60')
+            self.connect_btn.config(style='Connected.TButton', text='🔗 Đã kết nối')
+            
+            # Kích hoạt các nút chức năng
+            self.create_btn.config(state='normal')
+            self.join_btn.config(state='normal')
+            self.leave_btn.config(state='normal')
+            self.ready_btn.config(state='normal', style='Accent.TButton')
+            
+            self.show_notification("Kết nối server thành công! 🎉", "success")
             self.refresh_rooms()
         except Exception as e:
-            messagebox.showerror('Lỗi', f'Không kết nối: {e}')
+            self.show_notification(f"Không thể kết nối tới server: {e}", "error")
+            self.status_lbl.config(text='🔴 Lỗi kết nối', fg='#e74c3c')
 
     def create_room(self):
         if not self.conn:
-            messagebox.showwarning('Chưa kết nối', 'Vui lòng kết nối trước')
+            self.show_notification("Vui lòng kết nối tới server trước! 🔗", "warning")
             return
-        room = simpledialog.askstring('Tạo phòng', 'Tên phòng:')
+        room = simpledialog.askstring("Tạo phòng mới", "🎪 Nhập tên phòng:")
         if room:
             try:
                 self.conn.send('CREATE_ROOM', {'room': room})
+                self.show_notification(f"Đang tạo phòng '{room}'... ⏳", "info")
             except Exception as e:
-                # Hiển thị lỗi (nếu kết nối bị reset)
-                messagebox.showerror('Lỗi kết nối', f"Gửi CREATE_ROOM thất bại: {e}")
+                self.show_notification(f"Không thể tạo phòng: {e}", "error")
 
     def join_room(self):
         if not self.conn:
-            messagebox.showwarning('Chưa kết nối', 'Vui lòng kết nối trước')
+            self.show_notification("Vui lòng kết nối tới server trước! 🔗", "warning")
             return
-        room = simpledialog.askstring('Tham gia phòng', 'Tên phòng:')
+        room = simpledialog.askstring("Tham gia phòng", "🎯 Nhập tên phòng:")
         if room:
             self.conn.send('JOIN_ROOM', {'room': room})
-            # refresh list after join (server will also broadcast ROOM_JOINED)
-            self.refresh_rooms()
 
     def join_selected_room(self):
         sel = self.room_tree.selection()
         if not sel:
-            messagebox.showwarning('Chọn phòng', 'Vui lòng chọn phòng để tham gia')
+            self.show_notification("Vui lòng chọn một phòng từ danh sách! 📋", "warning")
             return
         item = sel[0]
-        idx = self.room_tree.index(item)
-        if idx < 0 or idx >= len(self._rooms):
-            messagebox.showerror('Lỗi', 'Chỉ số phòng không hợp lệ')
-            return
-        room = self._rooms[idx].get('room')
-        self.conn.send('JOIN_ROOM', {'room': room})
-        self.refresh_rooms()
+        room_name = self.room_tree.item(item, 'values')[0]
+        if room_name:
+            self.conn.send('JOIN_ROOM', {'room': room_name})
 
     def leave_room(self):
-        """Gửi lệnh LEAVE tới server (rời phòng hiện tại)."""
-        if not self.conn:
+        if not self.conn or not self.current_room:
             return
         try:
             self.conn.send('LEAVE', {})
-            # cập nhật UI: xoá bàn cờ và label
             self.board = [[0]*self.size for _ in range(self.size)]
             self._draw_board()
-            self.status_lbl.config(text='Đã rời phòng')
+            self.status_lbl.config(text='🟢 Đã kết nối server', fg='#27ae60')
+            self.room_info_lbl.config(text='')
+            self.current_room = None
+            self.ready_btn.config(state='normal', style='Accent.TButton', text='⚡ Sẵn sàng')
+            self.ready_status = False
+            self.game_started = False
+            self.game_ended = False
+            self.players_ready = {}
+            self.player1_status.config(text='Người chơi 1: 🔴 Chưa sẵn sàng', fg='#e74c3c')
+            self.player2_status.config(text='Người chơi 2: 🔴 Chưa sẵn sàng', fg='#e74c3c')
+            self.game_status.config(text='🟡 Đang chờ người chơi...', fg='#f39c12')
+            self.show_notification("Bạn đã rời khỏi phòng! 👋", "info")
             self.refresh_rooms()
         except Exception as e:
-            messagebox.showerror('Lỗi', f'Không thể rời phòng: {e}')
+            self.show_notification(f'Không thể rời phòng: {e}', "error")
 
     def refresh_rooms(self):
         if not self.conn:
@@ -215,59 +453,28 @@ class CaroGUI:
         try:
             self.conn.send('LIST_ROOMS', {})
         except Exception as e:
-            messagebox.showerror('Lỗi', f'Không thể lấy danh sách phòng: {e}')
-
-    def delete_selected_room(self):
-        sel = self.room_tree.selection()
-        if not sel:
-            messagebox.showwarning('Chọn phòng', 'Vui lòng chọn phòng để xóa')
-            return
-        item = sel[0]
-        idx = self.room_tree.index(item)
-        if idx < 0 or idx >= len(self._rooms):
-            messagebox.showerror('Lỗi', 'Chỉ số phòng không hợp lệ')
-            return
-        room = self._rooms[idx].get('room')
-        if messagebox.askyesno('Xác nhận', f'Bạn có chắc muốn xóa phòng {room}? (phòng phải rỗng)'):
-            try:
-                self.conn.send('DELETE_ROOM', {'room': room})
-            except Exception as e:
-                messagebox.showerror('Lỗi', f'Xóa phòng thất bại: {e}')
-
-    def rename_selected_room(self):
-        sel = self.room_tree.selection()
-        if not sel:
-            messagebox.showwarning('Chọn phòng', 'Vui lòng chọn phòng để đổi tên')
-            return
-        item = sel[0]
-        idx = self.room_tree.index(item)
-        if idx < 0 or idx >= len(self._rooms):
-            messagebox.showerror('Lỗi', 'Chỉ số phòng không hợp lệ')
-            return
-        room = self._rooms[idx].get('room')
-        new = simpledialog.askstring('Đổi tên phòng', f'Tên mới cho {room}:')
-        if new:
-            try:
-                self.conn.send('RENAME_ROOM', {'room': room, 'new': new})
-            except Exception as e:
-                messagebox.showerror('Lỗi', f'Đổi tên thất bại: {e}')
+            self.show_notification(f'Không thể tải danh sách phòng: {e}', "error")
 
     def on_click(self, event):
-        if self._animating:
-            # ignore clicks while win animation is running
+        # Chỉ cho phép click khi game đã bắt đầu và chưa kết thúc
+        if self._animating or not self.conn or not self.game_started or self.game_ended:
+            if not self.game_started:
+                self.show_notification("Trận đấu chưa bắt đầu! Chờ cả hai người chơi sẵn sàng. ⏳", "warning")
+            elif self.game_ended:
+                self.show_notification("Trận đấu đã kết thúc! Bấm 'Chơi lại' để bắt đầu ván mới. 🔄", "info")
             return
-        if not self.conn:
-            return
-        # Tính ô dựa trên vị trí click với phần bù căn giữa (offset)
+            
         cw = max(self.canvas.winfo_width(), 1)
         ch = max(self.canvas.winfo_height(), 1)
         grid_pix = self.size * self.cell
         ox = max((cw - grid_pix) // 2, 0)
         oy = max((ch - grid_pix) // 2, 0)
+        
         gx = event.x - ox
         gy = event.y - oy
         if gx < 0 or gy < 0:
             return
+            
         x = gx // self.cell
         y = gy // self.cell
         if 0 <= x < self.size and 0 <= y < self.size:
@@ -282,143 +489,166 @@ class CaroGUI:
             pass
         self.root.after(100, self._process_queue)
 
-    def toggle_sidebar(self):
-        if self.sidebar_visible:
-            # Ghi nhớ bề rộng hiện tại của sidebar trước khi ẩn
-            try:
-                w = self.side_frame.winfo_width()
-                if w > 50:
-                    self.sidebar_width = w
-            except Exception:
-                pass
-            try:
-                self.pw.forget(self.side_frame)
-            except Exception:
-                pass
-            self.sidebar_visible = False
-            try:
-                self.toggle_side_btn.config(text='Hiện phòng')
-            except Exception:
-                pass
-        else:
-            try:
-                self.pw.add(self.side_frame, weight=1)
-                self.root.update_idletasks()
-                # Đặt vị trí sash để khôi phục bề rộng sidebar (nếu API hỗ trợ)
-                try:
-                    pw_w = max(self.pw.winfo_width(), 1)
-                    newpos = max(100, pw_w - int(self.sidebar_width))
-                    self.pw.sashpos(0, newpos)
-                except Exception:
-                    pass
-            except Exception:
-                pass
-            self.sidebar_visible = True
-            try:
-                self.toggle_side_btn.config(text='Ẩn phòng')
-            except Exception:
-                pass
-
-    def _on_room_right_click(self, event):
-        # Select the row under cursor and popup context menu
-        try:
-            item = self.room_tree.identify_row(event.y)
-            if item:
-                self.room_tree.selection_set(item)
-                # popup menu
-                self.room_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            try:
-                self.room_menu.grab_release()
-            except Exception:
-                pass
-
     def _handle_msg(self, msg: dict):
         mtype = msg.get('type')
         payload = msg.get('payload', {})
+        
         if mtype == 'ERROR':
-            messagebox.showerror('Server lỗi', payload.get('msg'))
+            self.show_notification(payload.get('msg', 'Có lỗi xảy ra'), "error")
         elif mtype == 'ROOM_CREATED':
-            messagebox.showinfo('OK', f"Đã tạo phòng {payload.get('room')}")
+            room_name = payload.get('room')
+            self.show_notification(f"Đã tạo phòng '{room_name}' thành công! 🎪", "success")
+            self.current_room = room_name
+            self.ready_btn.config(state='normal')
+            self.room_info_lbl.config(text=f'Phòng: {room_name}')
+            # Reset trạng thái game
+            self.game_started = False
+            self.game_ended = False
+            self.players_ready = {self.player_id: False}
+            self.update_player_status(self.player_id, False)
         elif mtype == 'LIST_ROOMS_RESPONSE':
-            # payload.rooms = [{room, players, creator?}, ...]
             rooms = payload.get('rooms', [])
-            # lưu cache danh sách phòng để hỗ trợ tên có dấu/khoảng trắng/unicode
             self._rooms = rooms
-            # refresh tree
+            
+            # Cập nhật treeview
             for iid in self.room_tree.get_children():
                 self.room_tree.delete(iid)
+                
             for r in rooms:
-                name = r.get('room')
-                players = r.get('players')
+                name = r.get('room', '')
+                players = r.get('players', 0)
                 creator = r.get('creator', '')
-                # insert row; Treeview will keep insertion order so index mapping works
                 self.room_tree.insert('', tk.END, values=(name, players, creator))
-            # update count label
-            try:
-                self.room_count_lbl.config(text=f"{len(rooms)} phòng")
-            except Exception:
-                pass
-        elif mtype == 'ROOM_DELETED':
-            room = payload.get('room')
-            messagebox.showinfo('OK', f"Đã xóa phòng {room}")
-            self.refresh_rooms()
-        elif mtype == 'ROOM_RENAMED':
-            old = payload.get('old')
-            new = payload.get('new')
-            messagebox.showinfo('OK', f"Đổi tên phòng {old} -> {new}")
-            self.refresh_rooms()
+            
+            # Cập nhật số lượng phòng
+            self.room_count_lbl.config(text=f'{len(rooms)} phòng')
+            
         elif mtype == 'ROOM_JOINED':
-            players = payload.get('players')
-            self.status_lbl.config(text=f'Trong phòng: {players}')
+            room_name = payload.get('room', '')
+            players = payload.get('players', [])
+            self.status_lbl.config(text=f'🟢 Đang trong phòng: {room_name}')
+            self.room_info_lbl.config(text=f'Người chơi: {len(players)}/2')
+            self.current_room = room_name
+            self.ready_btn.config(state='normal')
+            self.show_notification(f"Đã tham gia phòng '{room_name}'! 🎯", "success")
+            
+            # Cập nhật trạng thái người chơi
+            self.players_ready = {}
+            for player in players:
+                self.players_ready[player] = False
+            self.update_player_display()
+            
         elif mtype == 'GAME_STATE':
-            board = payload.get('board')
+            board = payload.get('board', [])
             self.board = board
             self._draw_board()
+            
             if payload.get('winner'):
-                # attempt to find the winning line locally and animate it
+                winner = payload.get('winner')
+                self.game_started = False
+                self.game_ended = True
+                # KÍCH HOẠT LẠI nút sẵn sàng khi game kết thúc
+                self.ready_btn.config(state='normal')
+                
                 win_coords = self.find_winning_line(self.board, win_len=5)
                 if win_coords:
-                    # animate then show message
                     def after_anim():
-                        messagebox.showinfo('Kết thúc', f"Người thắng: {payload.get('winner')}")
+                        self.show_notification(f"🎉 Người chơi {winner} đã thắng! Trận đấu kết thúc.", "success")
+                        self.game_status.config(text=f"🏆 {winner} thắng!", fg="#e67e22")
                     self.animate_win(win_coords, callback=after_anim)
                 else:
-                    # fallback: just show message
-                    messagebox.showinfo('Kết thúc', f"Người thắng: {payload.get('winner')}")
-        elif mtype == 'CHAT':
-            # chat hiện chưa hiển thị, có thể mở rộng
-            print('CHAT', payload)
+                    self.show_notification(f"🎉 Người chơi {winner} đã thắng! Trận đấu kết thúc.", "success")
+                    self.game_status.config(text=f"🏆 {winner} thắng!", fg="#e67e22")
+            else:
+                # Game đang diễn ra
+                self.game_ended = False
+                
+        elif mtype == 'PLAYER_READY':
+            player = payload.get('player')
+            is_ready = payload.get('ready', False)
+            self.update_player_status(player, is_ready)
+            if is_ready:
+                self.show_notification(f"Người chơi {player} đã sẵn sàng! ⚡", "info")
+            else:
+                self.show_notification(f"Người chơi {player} đã hủy sẵn sàng", "warning")
+        elif mtype == 'GAME_START':
+            self.game_started = True
+            self.game_ended = False
+            # VÔ HIỆU HÓA nút sẵn sàng khi game bắt đầu
+            self.ready_btn.config(state='disabled')
+            self.show_notification("🎮 Trận đấu bắt đầu! Lượt đi đầu tiên...", "success")
+            self.game_status.config(text="🎮 Game đang diễn ra...", fg="#9b59b6")
+        elif mtype == 'PLAYER_JOINED':
+            player = payload.get('player')
+            self.show_notification(f"Người chơi {player} đã tham gia phòng", "info")
+            # Thêm người chơi mới với trạng thái chưa sẵn sàng
+            self.players_ready[player] = False
+            self.update_player_display()
+        elif mtype == 'PLAYER_LEFT':
+            player = payload.get('player')
+            self.show_notification(f"Người chơi {player} đã rời phòng", "warning")
+            # Xóa người chơi khỏi danh sách trạng thái
+            if player in self.players_ready:
+                del self.players_ready[player]
+            self.update_player_display()
+            self.game_started = False
+            self.game_ended = False
+            # KÍCH HOẠT LẠI nút sẵn sàng khi có người rời phòng
+            self.ready_btn.config(state='normal')
+
+    def update_player_display(self):
+        """Cập nhật hiển thị trạng thái người chơi"""
+        players = list(self.players_ready.keys())
+        
+        if len(players) >= 1:
+            status1 = "🟢 Sẵn sàng" if self.players_ready[players[0]] else "🔴 Chưa sẵn sàng"
+            color1 = "#27ae60" if self.players_ready[players[0]] else "#e74c3c"
+            self.player1_status.config(text=f'{players[0]}: {status1}', fg=color1)
+        else:
+            self.player1_status.config(text='Người chơi 1: 🔴 Chưa sẵn sàng', fg='#e74c3c')
+            
+        if len(players) >= 2:
+            status2 = "🟢 Sẵn sàng" if self.players_ready[players[1]] else "🔴 Chưa sẵn sàng"
+            color2 = "#27ae60" if self.players_ready[players[1]] else "#e74c3c"
+            self.player2_status.config(text=f'{players[1]}: {status2}', fg=color2)
+        else:
+            self.player2_status.config(text='Người chơi 2: 🔴 Chưa sẵn sàng', fg='#e74c3c')
+            
+        # Cập nhật trạng thái game
+        if len(players) < 2:
+            self.game_status.config(text="🟡 Đang chờ người chơi khác...", fg="#f39c12")
+            self.game_started = False
+            self.game_ended = False
 
     def _draw_board(self):
-        # Xóa các quân cờ cũ
         self.canvas.delete('stone')
-
+        
         cw = max(self.canvas.winfo_width(), 1)
         ch = max(self.canvas.winfo_height(), 1)
         grid_pix = self.size * self.cell
         ox = max((cw - grid_pix) // 2, 0)
         oy = max((ch - grid_pix) // 2, 0)
 
-        pad = int(self.cell * 0.18)
+        stone_size = self.cell * 0.8
+        pad = (self.cell - stone_size) / 2
+        
         for y in range(self.size):
             for x in range(self.size):
                 v = self.board[y][x]
                 if v != 0:
                     x1 = ox + x * self.cell + pad
                     y1 = oy + y * self.cell + pad
-                    x2 = x1 + (self.cell - 2*pad)
-                    y2 = y1 + (self.cell - 2*pad)
+                    x2 = x1 + stone_size
+                    y2 = y1 + stone_size
+                    
                     if v == 1:
-                        fill = '#222222'  # đen
-                        outline = '#111111'
+                        self.canvas.create_oval(x1, y1, x2, y2, fill='#2c3e50', outline='#1a252f', width=2, tags='stone')
+                        self.canvas.create_oval(x1+2, y1+2, x2-2, y2-2, outline='#34495e', width=1, tags='stone')
                     else:
-                        fill = '#f7f7f7'  # trắng
-                        outline = '#d0d0d0'
-                    self.canvas.create_oval(x1, y1, x2, y2, fill=fill, outline=outline, width=2, tags='stone')
+                        self.canvas.create_oval(x1, y1, x2, y2, fill='#ecf0f1', outline='#bdc3c7', width=2, tags='stone')
+                        self.canvas.create_oval(x1+2, y1+2, x2-2, y2-2, outline='white', width=1, tags='stone')
 
     def _draw_grid(self):
-        # Vẽ lại lưới theo kích thước hiện tại và căn giữa
         self.canvas.delete('cell')
         cw = max(self.canvas.winfo_width(), 1)
         ch = max(self.canvas.winfo_height(), 1)
@@ -426,6 +656,7 @@ class CaroGUI:
         grid_pix = self.size * cell
         ox = max((cw - grid_pix) // 2, 0)
         oy = max((ch - grid_pix) // 2, 0)
+        
         for y in range(self.size):
             for x in range(self.size):
                 x1 = ox + x * cell
@@ -441,37 +672,34 @@ class CaroGUI:
 
     def _on_canvas_resize(self, event):
         try:
-            # Tính kích thước ô mới theo cạnh ngắn hơn để giữ tỉ lệ vuông
-            new_cell = max(16, int(min(event.width, event.height) / max(self.size, 1)))
-        except Exception:
+            new_cell = max(20, int(min(event.width, event.height) / self.size))
+        except:
             new_cell = self.cell
+            
         if new_cell != self.cell:
             self.cell = new_cell
-        # Luôn vẽ lại để căn giữa chính xác
+            
         self._draw_grid()
         self._draw_board()
 
     def find_winning_line(self, board, win_len=5):
-        """Tìm và trả về danh sách (x,y) của đường thắng nếu có, ngược lại trả về [].
-        `board` là danh sách các hàng: board[y][x]
-        """
         H = len(board)
-        W = len(board[0]) if H>0 else 0
-        dirs = [(1,0),(0,1),(1,1),(1,-1)]
+        W = len(board[0]) if H > 0 else 0
+        dirs = [(1,0), (0,1), (1,1), (1,-1)]
+        
         for y in range(H):
             for x in range(W):
                 v = board[y][x]
                 if v == 0:
                     continue
-                for dx,dy in dirs:
+                for dx, dy in dirs:
                     coords = [(x,y)]
-                    nx, ny = x+dx, y+dy
+                    nx, ny = x + dx, y + dy
                     while 0 <= nx < W and 0 <= ny < H and board[ny][nx] == v:
                         coords.append((nx, ny))
                         nx += dx
                         ny += dy
-                    # kiểm tra thêm hướng ngược lại để thu được toàn bộ đoạn thẳng
-                    bx, by = x-dx, y-dy
+                    bx, by = x - dx, y - dy
                     while 0 <= bx < W and 0 <= by < H and board[by][bx] == v:
                         coords.insert(0, (bx, by))
                         bx -= dx
@@ -480,61 +708,48 @@ class CaroGUI:
                         return coords
         return []
 
-    def animate_win(self, coords, callback=None, cycles=6, interval=250):
-        """Hiệu ứng nhấp nháy (blink) tô sáng các ô trong `coords` (danh sách (x,y)).
-        Sau khi animation kết thúc sẽ gọi `callback()` nếu có.
-        """
+    def animate_win(self, coords, callback=None, cycles=6, interval=300):
         if not coords:
             if callback:
                 callback()
             return
+            
         self._animating = True
-        orig_fills = {}
-        highlight = 'gold'
-
-    # lưu màu fill ban đầu của từng ô để phục hồi sau animation
-        for x,y in coords:
-            tag = f'cell_{x}_{y}'
-            items = self.canvas.find_withtag(tag)
-            for it in items:
-                try:
-                    orig = self.canvas.itemcget(it, 'fill')
-                except Exception:
-                    orig = ''
-                orig_fills[it] = orig
-
-        step = {'i': 0}
-
+        highlight_color = '#e74c3c'
+        
+        step = {'count': 0}
+        
         def pulse():
-            i = step['i']
-        # bật/tắt màu highlight (toggle)
-            make_high = (i % 2 == 0)
-            for it, orig in orig_fills.items():
-                try:
-                    self.canvas.itemconfigure(it, fill=(highlight if make_high else orig))
-                except Exception:
-                    pass
-            step['i'] += 1
-            if step['i'] <= cycles:
-                self.root.after(interval, pulse)
+            step['count'] += 1
+            make_highlight = (step['count'] % 2 == 1)
+            
+            for x, y in coords:
+                tag = f'cell_{x}_{y}'
+                items = self.canvas.find_withtag(tag)
+                for item in items:
+                    if make_highlight:
+                        self.canvas.itemconfig(item, fill=highlight_color)
+                    else:
+                        self.canvas.itemconfig(item, fill=self.board_bg)
+            
+            if step['count'] < cycles * 2:
+                self.root.after(interval // 2, pulse)
             else:
-                # đảm bảo phục hồi màu fill ban đầu
-                for it, orig in orig_fills.items():
-                    try:
-                        self.canvas.itemconfigure(it, fill=orig)
-                    except Exception:
-                        pass
+                for x, y in coords:
+                    tag = f'cell_{x}_{y}'
+                    items = self.canvas.find_withtag(tag)
+                    for item in items:
+                        self.canvas.itemconfig(item, fill=self.board_bg)
                 self._animating = False
                 if callback:
-                    try:
-                        callback()
-                    except Exception:
-                        pass
-
+                    callback()
+        
         pulse()
 
 
 if __name__ == '__main__':
     root = tk.Tk()
+    root.geometry('1100x700')
+    root.minsize(900, 600)
     app = CaroGUI(root)
     root.mainloop()
