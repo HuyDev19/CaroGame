@@ -3,6 +3,10 @@ Client GUI bằng tkinter.
 Giao diện đơn giản: kết nối server, tạo/tham gia phòng, bàn cờ 15x15, click để gửi MOVE.
 Chú thích bằng tiếng Việt.
 """
+import winsound
+import os
+CLICK_SOUND = os.path.join(os.path.dirname(__file__), "sounds", "click.wav")
+WIN_SOUND = os.path.join(os.path.dirname(__file__), "sounds", "win.wav")
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 from tkinter import ttk
@@ -57,7 +61,7 @@ class CaroGUI:
         
         # Tiêu đề game
         title_label = tk.Label(header, text='🎮 CARO VIỆT NAM', font=('Segoe UI', 20, 'bold'), 
-                               fg='white', bg='#34495e')
+                              fg='white', bg='#34495e')
         title_label.pack(side=tk.LEFT, padx=20, pady=20)
         
         # Frame chứa các nút điều khiển
@@ -97,11 +101,11 @@ class CaroGUI:
         info_frame.pack(fill=tk.X, pady=(0, 10))
         
         self.status_lbl = tk.Label(info_frame, text='🔴 Chưa kết nối server', font=('Segoe UI', 11), 
-                                   fg='#e74c3c', bg='white')
+                                  fg='#e74c3c', bg='white')
         self.status_lbl.pack(side=tk.LEFT, padx=15, pady=10)
 
         self.room_info_lbl = tk.Label(info_frame, text='', font=('Segoe UI', 10), 
-                                      fg='#7f8c8d', bg='white')
+                                     fg='#7f8c8d', bg='white')
         self.room_info_lbl.pack(side=tk.RIGHT, padx=15, pady=10)
         
         # Bàn cờ container với shadow effect
@@ -111,15 +115,10 @@ class CaroGUI:
         # Canvas bàn cờ
         self.size = 15
         self.cell = 40
-
-        # --- SỬA LỖI: Di chuyển biến trạng thái xuống đây ---
-        self.previous_board = [[0]*self.size for _ in range(self.size)]
-        self.last_move_coord = None # Sẽ lưu (x, y) của nước đi cuối
-
         self.board_bg = '#e8c87e'  # Màu gỗ nhạt
         self.grid_color = '#8b6914'  # Màu nâu đậm
         self.canvas = tk.Canvas(board_container, width=self.size*self.cell, height=self.size*self.cell, 
-                                bg=self.board_bg, highlightthickness=0, relief='sunken', bd=3)
+                               bg=self.board_bg, highlightthickness=0, relief='sunken', bd=3)
         self.canvas.pack(expand=True, padx=2, pady=2)
         self.canvas.bind('<Button-1>', self.on_click)
         self.canvas.bind('<Configure>', self._on_canvas_resize)
@@ -130,7 +129,7 @@ class CaroGUI:
         self.notification_frame.pack_propagate(False)
         
         self.notification_label = tk.Label(self.notification_frame, text='Chào mừng đến với Caro Việt Nam! 🎮', font=('Segoe UI', 10), 
-                                           fg='white', bg='#34495e', wraplength=600)
+                                         fg='white', bg='#34495e', wraplength=600)
         self.notification_label.pack(expand=True, pady=15)
 
         # Right panel - Danh sách phòng và trạng thái
@@ -144,7 +143,7 @@ class CaroGUI:
         room_header.pack_propagate(False)
         
         room_title = tk.Label(room_header, text='🎯 DANH SÁCH PHÒNG', font=('Segoe UI', 12, 'bold'), 
-                              fg='white', bg='#3498db')
+                            fg='white', bg='#3498db')
         room_title.pack(side=tk.LEFT, padx=15, pady=15)
         
         # Panel trạng thái người chơi trong phòng
@@ -153,61 +152,23 @@ class CaroGUI:
         self.players_frame.pack_propagate(False)
         
         tk.Label(self.players_frame, text='TRẠNG THÁI NGƯỜI CHƠI', font=('Segoe UI', 10, 'bold'), 
-                 bg='#f8f9fa', fg='#2c3e50').pack(pady=(10, 5))
+                bg='#f8f9fa', fg='#2c3e50').pack(pady=(10, 5))
         
         self.player1_status = tk.Label(self.players_frame, text='Người chơi 1: 🔴 Chưa sẵn sàng', 
-                                       font=('Segoe UI', 9), bg='#f8f9fa', fg='#e74c3c')
+                                      font=('Segoe UI', 9), bg='#f8f9fa', fg='#e74c3c')
         self.player1_status.pack(anchor='w', padx=10)
         
         self.player2_status = tk.Label(self.players_frame, text='Người chơi 2: 🔴 Chưa sẵn sàng', 
-                                       font=('Segoe UI', 9), bg='#f8f9fa', fg='#e74c3c')
+                                      font=('Segoe UI', 9), bg='#f8f9fa', fg='#e74c3c')
         self.player2_status.pack(anchor='w', padx=10, pady=(2, 10))
         
         self.game_status = tk.Label(self.players_frame, text='🟡 Đang chờ người chơi...', 
-                                    font=('Segoe UI', 9, 'bold'), bg='#f8f9fa', fg='#f39c12')
+                                   font=('Segoe UI', 9, 'bold'), bg='#f8f9fa', fg='#f39c12')
         self.game_status.pack(anchor='w', padx=10, pady=(5, 0))
-
-        # --- THÊM MỚI: Khung Chat ---
-        chat_frame = tk.Frame(self.right_panel, bg='white')
-        chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        chat_title_frame = tk.Frame(chat_frame, bg='white')
-        chat_title_frame.pack(fill=tk.X)
-        tk.Label(chat_title_frame, text='💬 CHAT TRONG PHÒNG', font=('Segoe UI', 10, 'bold'), 
-                 bg='white', fg='#2c3e50').pack(side=tk.LEFT, pady=(5, 5))
-
-        # Khung chứa Text widget và Scrollbar
-        chat_scroll_frame = tk.Frame(chat_frame, relief='sunken', bd=1)
-        chat_scroll_frame.pack(fill=tk.BOTH, expand=True)
-
-        chat_scrollbar = ttk.Scrollbar(chat_scroll_frame, orient=tk.VERTICAL)
-        self.chat_display = tk.Text(chat_scroll_frame, height=8, width=35,
-                                    yscrollcommand=chat_scrollbar.set, 
-                                    state='disabled', font=('Segoe UI', 9), 
-                                    bg='#fdfdfd', relief='flat', wrap=tk.WORD)
-        chat_scrollbar.config(command=self.chat_display.yview)
-        
-        chat_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.chat_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        # Khung nhập liệu chat
-        chat_input_frame = tk.Frame(chat_frame, bg='white')
-        chat_input_frame.pack(fill=tk.X, pady=(5, 0))
-        
-        self.chat_entry = ttk.Entry(chat_input_frame, font=('Segoe UI', 9))
-        self.chat_entry.pack(fill=tk.X, expand=True, side=tk.LEFT, padx=(0, 5))
-        
-        # Bind phím Enter để gửi chat
-        self.chat_entry.bind("<Return>", self._send_chat_message)
-        
-        chat_send_btn = ttk.Button(chat_input_frame, text="Gửi", 
-                                   command=self._send_chat_message, width=5)
-        chat_send_btn.pack(side=tk.RIGHT)
-        # --- KẾT THÚC KHUNG CHAT ---
         
         # Controls cho phòng
         room_controls = tk.Frame(self.right_panel, bg='#ecf0f1', pady=10)
-        room_controls.pack(fill=tk.X, padx=10, pady=(10,0)) # Thêm pady-top
+        room_controls.pack(fill=tk.X, padx=10)
         
         ttk.Button(room_controls, text='🔄 Làm mới', command=self.refresh_rooms, width=12).pack(side=tk.LEFT, padx=2)
         ttk.Button(room_controls, text='🎮 Tham gia', command=self.join_selected_room, width=12).pack(side=tk.RIGHT, padx=2)
@@ -216,7 +177,7 @@ class CaroGUI:
         tree_frame = tk.Frame(self.right_panel, bg='white')
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        self.room_tree = ttk.Treeview(tree_frame, columns=('room', 'players', 'creator'), show='headings', height=5) # Giảm chiều cao
+        self.room_tree = ttk.Treeview(tree_frame, columns=('room', 'players', 'creator'), show='headings', height=12)
         
         # Định dạng cột
         self.room_tree.heading('room', text='TÊN PHÒNG')
@@ -287,35 +248,35 @@ class CaroGUI:
         
         # Configure styles - THAY ĐỔI MÀU Ở ĐÂY
         style.configure('TButton', font=('Segoe UI', 9), padding=6,
-                       background='#3498db', foreground='Black',
-                      relief='raised', borderwidth=5)
+                    background='#3498db', foreground='Black',
+               relief='raised', borderwidth=5)
         style.configure('Accent.TButton', font=('Segoe UI', 9, 'bold'), 
-                       background='#2ecc71', foreground='Black',
-                      relief='raised', borderwidth=5)
+                    background='#2ecc71', foreground='Black',
+               relief='raised', borderwidth=5)
         style.configure('Success.TButton', font=('Segoe UI', 9, 'bold'),
-                       background='#e74c3c', foreground='Black',
-                      relief='raised', borderwidth=5)
+                    background='#e74c3c', foreground='Black',
+               relief='raised', borderwidth=5)
         style.configure('Disabled.TButton', font=('Segoe UI', 9),
-                       background="#77c284", foreground='Black',
-                      relief='raised', borderwidth=5)
+                    background="#77c284", foreground='Black',
+               relief='raised', borderwidth=5)
         style.configure('Connected.TButton', font=('Segoe UI', 9, 'bold'),
-                       background='#9b59b6', foreground='Black',
-                      relief='raised', borderwidth=5)
+                    background='#9b59b6', foreground='Black',
+               relief='raised', borderwidth=5)
         style.configure('Treeview', font=('Segoe UI', 9), rowheight=25)
         style.configure('Treeview.Heading', font=('Segoe UI', 9, 'bold'), 
-                       background="#80e1f9")
+                    background="#80e1f9")
     
         # Map styles for hover effects - THAY ĐỔI MÀU HOVER Ở ĐÂY
         style.map('Accent.TButton', 
-                  background=[('active', '#27ae60'), ('pressed', '#229954')])
+                background=[('active', '#27ae60'), ('pressed', '#229954')])
         style.map('Success.TButton',
-                  background=[('active', '#c0392b'), ('pressed', '#a93226')])
+                background=[('active', '#c0392b'), ('pressed', '#a93226')])
         style.map('Disabled.TButton',
-                  background=[('active', '#7f8c8d'), ('pressed', '#95a5a6')])
+                background=[('active', '#7f8c8d'), ('pressed', '#95a5a6')])
         style.map('Connected.TButton',
-                  background=[('active', '#8e44ad'), ('pressed', '#7d3c98')])
+                background=[('active', '#8e44ad'), ('pressed', '#7d3c98')])
         style.map('TButton',
-                  background=[('active', '#2980b9'), ('pressed', '#2471a3')])
+                background=[('active', '#2980b9'), ('pressed', '#2471a3')])
 
     def toggle_ready(self):
         """Chuyển trạng thái sẵn sàng"""
@@ -486,13 +447,6 @@ class CaroGUI:
         try:
             self.conn.send('LEAVE', {})
             self.board = [[0]*self.size for _ in range(self.size)]
-            
-            # --- THÊM MỚI: Reset trạng thái đánh dấu và chat ---
-            self.last_move_coord = None
-            self.previous_board = [[0]*self.size for _ in range(self.size)]
-            self._clear_chat_display()
-            # --- KẾT THÚC ---
-
             self._draw_board()
             self.status_lbl.config(text='🟢 Đã kết nối server', fg='#27ae60')
             self.room_info_lbl.config(text='')
@@ -520,6 +474,7 @@ class CaroGUI:
 
     def on_click(self, event):
         # Chỉ cho phép click khi game đã bắt đầu và chưa kết thúc
+        winsound.PlaySound(CLICK_SOUND, winsound.SND_FILENAME | winsound.SND_ASYNC)
         if self._animating or not self.conn or not self.game_started or self.game_ended:
             if not self.game_started:
                 self.show_notification("Trận đấu chưa bắt đầu! Chờ cả hai người chơi sẵn sàng. ⏳", "warning")
@@ -573,10 +528,6 @@ class CaroGUI:
             # THÊM: Làm mới danh sách phòng sau khi tạo phòng
             self.refresh_rooms()
             
-            # --- THÊM MỚI: Xóa chat cũ và chào mừng ---
-            self._clear_chat_display()
-            self._display_chat_message("Hệ thống", f"Chào mừng đến phòng '{room_name}'!")
-            
         elif mtype == 'ROOM_JOINED':
             room_name = payload.get('room', '')
             players = payload.get('players', [])
@@ -598,10 +549,6 @@ class CaroGUI:
             self.update_player_display()
             # THÊM: Làm mới danh sách phòng sau khi tham gia phòng
             self.refresh_rooms()
-
-            # --- THÊM MỚI: Xóa chat cũ và chào mừng ---
-            self._clear_chat_display()
-            self._display_chat_message("Hệ thống", f"Bạn đã tham gia phòng '{room_name}'.")
             
         elif mtype == 'LIST_ROOMS_RESPONSE':
             rooms = payload.get('rooms', [])
@@ -629,9 +576,7 @@ class CaroGUI:
             self.update_player_display()
             # THÊM: Làm mới danh sách phòng khi có người chơi mới
             self.refresh_rooms()
-            # --- THÊM MỚI: Thông báo chat ---
-            self._display_chat_message("Hệ thống", f"'{player}' đã tham gia.")
-
+            
         elif mtype == 'PLAYER_LEFT':
             player = payload.get('player')
             players_ready = payload.get('players_ready', {})
@@ -645,17 +590,10 @@ class CaroGUI:
             self.ready_btn.config(state='normal')
             # THÊM: Làm mới danh sách phòng khi có người rời
             self.refresh_rooms()
-            # --- THÊM MỚI: Thông báo chat ---
-            self._display_chat_message("Hệ thống", f"'{player}' đã rời phòng.")
             
         elif mtype == 'GAME_STATE':
-            # --- CHỈNH SỬA: Xử lý trạng thái đánh dấu ---
-            new_board = payload.get('board', [])
-            self.last_move_coord = self._find_last_move(self.previous_board, new_board)
-            self.board = new_board
-            self.previous_board = [row[:] for row in new_board] # Copy sâu
-            # --- KẾT THÚC CHỈNH SỬA ---
-
+            board = payload.get('board', [])
+            self.board = board
             self._draw_board()
             
             if payload.get('winner'):
@@ -663,11 +601,8 @@ class CaroGUI:
                 self.game_started = False
                 self.game_ended = True
                 # KÍCH HOẠT LẠI nút sẵn sàng khi game kết thúc
+                winsound.PlaySound(WIN_SOUND, winsound.SND_FILENAME | winsound.SND_ASYNC)
                 self.ready_btn.config(state='normal')
-                
-                # --- THÊM MỚI: Reset trạng thái đánh dấu ---
-                self.last_move_coord = None
-                self.previous_board = [[0]*self.size for _ in range(self.size)]
                 
                 win_coords = self.find_winning_line(self.board, win_len=5)
                 if win_coords:
@@ -729,12 +664,8 @@ class CaroGUI:
                 self.update_player_status(player, is_ready)
                 if is_ready:
                     self.show_notification(f"Người chơi {player} đã sẵn sàng! ⚡", "info")
-                    # --- THÊM MỚI: Thông báo chat ---
-                    self._display_chat_message("Hệ thống", f"'{player}' đã sẵn sàng.")
                 else:
                     self.show_notification(f"Người chơi {player} đã hủy sẵn sàng", "warning")
-                    # --- THÊM MỚI: Thông báo chat ---
-                    self._display_chat_message("Hệ thống", f"'{player}' đã hủy sẵn sàng.")
                     
         elif mtype == 'GAME_START':
             self.game_started = True
@@ -743,17 +674,6 @@ class CaroGUI:
             self.ready_btn.config(state='disabled')
             self.show_notification("🎮 Trận đấu bắt đầu! Lượt đi đầu tiên...", "success")
             self.game_status.config(text="🎮 Game đang diễn ra...", fg="#9b59b6")
-
-            # --- THÊM MỚI: Reset trạng thái đánh dấu ---
-            self.last_move_coord = None
-            self.previous_board = [[0]*self.size for _ in range(self.size)]
-            self._display_chat_message("Hệ thống", "Trận đấu bắt đầu!")
-
-        # --- THÊM MỚI: Xử lý tin nhắn chat ---
-        elif mtype == 'CHAT_MESSAGE':
-            player = payload.get('player', '???')
-            message = payload.get('message', '')
-            self._display_chat_message(player, message)
 
     def update_player_display(self):
         """Cập nhật hiển thị trạng thái người chơi"""
@@ -854,67 +774,33 @@ class CaroGUI:
             except Exception:
                 pass
 
-    # --- HÀM ĐÃ ĐƯỢC THAY THẾ (Thêm logic đánh dấu nước đi cuối) ---
     def _draw_board(self):
-        self.canvas.delete('stone') # Giữ nguyên dòng này để xóa cờ cũ
+        self.canvas.delete('stone')
         
-        # Phần code này giữ nguyên
         cw = max(self.canvas.winfo_width(), 1)
         ch = max(self.canvas.winfo_height(), 1)
         grid_pix = self.size * self.cell
         ox = max((cw - grid_pix) // 2, 0)
         oy = max((ch - grid_pix) // 2, 0)
 
-        # 1. Định nghĩa font chữ cho quân cờ
-        try:
-            font_size = int(self.cell * 0.8)
-            if font_size <= 0: font_size = 10 
-        except Exception:
-            font_size = 20 
-            
-        piece_font = ("Arial", font_size, "bold")
-
+        stone_size = self.cell * 0.8
+        pad = (self.cell - stone_size) / 2
+        
         for y in range(self.size):
             for x in range(self.size):
                 v = self.board[y][x]
                 if v != 0:
-                    # 2. Tính toán tọa độ TRUNG TÂM ô cho create_text
-                    center_x = ox + (x * self.cell) + (self.cell / 2)
-                    center_y = oy + (y * self.cell) + (self.cell / 2)
+                    x1 = ox + x * self.cell + pad
+                    y1 = oy + y * self.cell + pad
+                    x2 = x1 + stone_size
+                    y2 = y1 + stone_size
                     
-                    # 3. Vẽ X (đỏ) hoặc O (xanh) theo yêu cầu
-                    if v == 1: # Player 1 (Giả sử là X)
-                        self.canvas.create_text(
-                            center_x, 
-                            center_y, 
-                            text="X", 
-                            fill="red",  # Màu đỏ
-                            font=piece_font,
-                            tags='stone' # Quan trọng: giữ tag 'stone'
-                        )
-                    else: # Player 2 (Giả sử là O)
-                        self.canvas.create_text(
-                            center_x, 
-                            center_y, 
-                            text="O", 
-                            fill="blue", # Màu xanh
-                            font=piece_font,
-                            tags='stone' # Quan trọng: giữ tag 'stone'
-                        )
-                    
-                    # --- THÊM MỚI: Vẽ đánh dấu nước đi cuối ---
-                    if self.last_move_coord == (x, y):
-                        # Tính tọa độ góc của ô
-                        x1 = ox + (x * self.cell)
-                        y1 = oy + (y * self.cell)
-                        x2 = x1 + self.cell
-                        y2 = y1 + self.cell
-                        # Vẽ một hình chữ nhật màu vàng, rỗng ruột
-                        self.canvas.create_rectangle(
-                            x1 + 3, y1 + 3, x2 - 3, y2 - 3, 
-                            outline='yellow', width=3, tags='stone'
-                        )
-                    # --- KẾT THÚC THÊM MỚI ---
+                    if v == 1:
+                        self.canvas.create_oval(x1, y1, x2, y2, fill='#2c3e50', outline='#1a252f', width=2, tags='stone')
+                        self.canvas.create_oval(x1+2, y1+2, x2-2, y2-2, outline='#34495e', width=1, tags='stone')
+                    else:
+                        self.canvas.create_oval(x1, y1, x2, y2, fill='#ecf0f1', outline='#bdc3c7', width=2, tags='stone')
+                        self.canvas.create_oval(x1+2, y1+2, x2-2, y2-2, outline='white', width=1, tags='stone')
 
     def _draw_grid(self):
         self.canvas.delete('cell')
@@ -1043,73 +929,6 @@ class CaroGUI:
                         pass
         finally:
             self.root.destroy()
-
-    # --- THÊM MỚI: Các hàm hỗ trợ ---
-
-    def _send_chat_message(self, event=None):
-        """Gửi tin nhắn chat từ ô nhập liệu lên server."""
-        msg = self.chat_entry.get()
-        if msg.strip() == '':
-            return
-        
-        if not self.conn or not self.current_room:
-            self.show_notification("Bạn phải ở trong phòng để chat!", "warning")
-            return
-            
-        try:
-            self.conn.send('CHAT', {'message': msg})
-            self.chat_entry.delete(0, tk.END)
-        except Exception as e:
-            self.show_notification(f"Lỗi gửi tin nhắn: {e}", "error")
-
-    def _display_chat_message(self, player, message):
-        """Hiển thị một tin nhắn trong hộp chat và tự động cuộn."""
-        try:
-            self.chat_display.config(state='normal')
-            
-            # Làm cho tên người chơi nổi bật
-            # Tìm "start" index của text vừa insert
-            start_index = self.chat_display.index(tk.END)
-            
-            # Chèn player
-            if player == "Hệ thống":
-                self.chat_display.insert(tk.END, f"{player}: ", "system")
-            else:
-                self.chat_display.insert(tk.END, f"{player}: ", "player_name")
-                
-            # Chèn message
-            self.chat_display.insert(tk.END, f"{message}\n")
-            
-            # Định nghĩa tag (chỉ cần làm 1 lần)
-            if "system" not in self.chat_display.tag_names():
-                self.chat_display.tag_configure("system", foreground="#9b59b6", font=('Segoe UI', 9, 'italic'))
-            if "player_name" not in self.chat_display.tag_names():
-                self.chat_display.tag_configure("player_name", foreground="#3498db", font=('Segoe UI', 9, 'bold'))
-
-            self.chat_display.see(tk.END) # Tự động cuộn xuống
-            self.chat_display.config(state='disabled')
-        except Exception as e:
-            print(f"Lỗi hiển thị chat: {e}")
-
-    def _clear_chat_display(self):
-        """Xóa toàn bộ nội dung chat."""
-        try:
-            self.chat_display.config(state='normal')
-            self.chat_display.delete('1.0', tk.END)
-            self.chat_display.config(state='disabled')
-        except Exception as e:
-            print(f"Lỗi xóa chat: {e}")
-
-    def _find_last_move(self, old_board, new_board):
-        """So sánh 2 bàn cờ để tìm nước đi (x, y) mới nhất."""
-        if not old_board or not new_board:
-            return None
-        
-        for y in range(self.size):
-            for x in range(self.size):
-                if old_board[y][x] == 0 and new_board[y][x] != 0:
-                    return (x, y)
-        return None # Không tìm thấy nước đi mới
 
 
 if __name__ == '__main__':
