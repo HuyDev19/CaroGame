@@ -75,7 +75,7 @@ pip install -r requirements.txt
 3) Kiểm tra nhanh (tùy chọn):
 ```powershell
 # kiểm tra cú pháp
-python -m py_compile server/server.py client/gui.py
+pythm py_compile server/server.py client/gui.pyon -
 
 # chạy unit tests
 python -m unittest discover -v

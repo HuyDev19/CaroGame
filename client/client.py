@@ -52,7 +52,13 @@ class ClientConnection:
         if not self.sock:
             raise RuntimeError('Chưa kết nối')
         try:
-            send_msg(self.sock, {'type': mtype, 'payload': payload, 'player_id': self.player_id})
+            # ĐẢM BẢO luôn gửi player_id
+            message = {
+                'type': mtype, 
+                'payload': payload, 
+                'player_id': self.player_id  # LUÔN gửi player_id
+            }
+            send_msg(self.sock, message)
         except Exception as e:
             # Khi kết nối bị đóng bởi server, báo lại cho caller qua callback
             self._running = False

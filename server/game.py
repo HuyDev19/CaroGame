@@ -59,6 +59,8 @@ class Room:
         self.room_id = room_id
         self.players: Dict[str, socket.socket] = {}  # player_id -> socket
         self.players_ready: Dict[str, bool] = {}     # player_id -> ready status
+        # track rematch requests separately from ready state
+        self.players_replay: Dict[str, bool] = {}    # player_id -> replay requested
         self.game = GameState()
         self.creator = creator
 
@@ -68,6 +70,7 @@ class Room:
             return False
         self.players[player_id] = sock
         self.players_ready[player_id] = False  # Mặc định là chưa sẵn sàng
+        self.players_replay[player_id] = False
         return True
 
     def remove_player(self, player_id: str):
@@ -76,11 +79,24 @@ class Room:
             del self.players[player_id]
         if player_id in self.players_ready:
             del self.players_ready[player_id]
+        if player_id in self.players_replay:
+            del self.players_replay[player_id]
 
     def set_player_ready(self, player_id: str, ready: bool):
         """Đặt trạng thái sẵn sàng cho player."""
         if player_id in self.players_ready:
             self.players_ready[player_id] = ready
+
+    def set_player_replay(self, player_id: str, replay: bool):
+        """Đặt trạng thái yêu cầu rematch cho player."""
+        if player_id in self.players_replay:
+            self.players_replay[player_id] = replay
+
+    def all_players_replay(self) -> bool:
+        """Kiểm tra xem tất cả players có yêu cầu rematch không."""
+        if len(self.players) < 2:
+            return False
+        return all(self.players_replay.values())
 
     def all_players_ready(self) -> bool:
         """Kiểm tra xem tất cả players đã sẵn sàng chưa."""
@@ -91,6 +107,9 @@ class Room:
     def reset_game(self):
         """Reset game state."""
         self.game = GameState()
+        # reset replay requests as a new game is starting
+        for pid in self.players_replay:
+            self.players_replay[pid] = False
         # Có thể reset trạng thái ready nếu muốn
         # for player_id in self.players_ready:
         #     self.players_ready[player_id] = False

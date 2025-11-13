@@ -32,17 +32,24 @@ clients = set()
 
 
 def broadcast_room(room: Room, msg: dict) -> None:
-    """Gửi msg (dict) tới tất cả client trong phòng (nếu socket còn kết nối)."""
-    for pid, sock in list(room.players.items()):
+    """Gửi msg tới tất cả client trong phòng, tự động xoá client chết."""
+    dead = []
+    for pid, sock in room.players.items():
         try:
             send_msg(sock, msg)
         except Exception:
-            print(f"Lỗi khi gửi tới {pid}, xoá player")
-            try:
+            dead.append(pid)
+
+    # remove sau khi duyệt xong
+    for pid in dead:
+        try:
+            sock = room.players.get(pid)
+            if sock:
                 sock.close()
-            except Exception:
-                pass
-            room.remove_player(pid)
+        except:
+            pass
+        room.remove_player(pid)
+
 
 
 def broadcast_all(msg: dict) -> None:
@@ -68,26 +75,33 @@ def build_rooms_list() -> list:
     return res
 
 def handle_client(conn: socket.socket, addr):
-    """Hàm chạy trên thread cho mỗi client kết nối.
-    Client gửi JSON: {"type":..., "payload": {...}, "player_id":...}
-    """
+    """Hàm chạy trên thread cho mỗi client kết nối."""
     print(f"Client từ {addr} kết nối")
-    # thêm vào danh sách client toàn cục
     try:
         clients.add(conn)
     except Exception:
         pass
-    player_id = None
+    
+    # KHỞI TẠO player_id với giá trị mặc định từ addr
+    player_id = str(addr[1])  # Sử dụng port làm ID mặc định
     current_room = None
+    
     try:
         while True:
             msg = recv_json(conn)
             if msg is None:
                 print(f"Client {addr} đóng kết nối")
                 break
+                
             mtype = msg.get('type')
             payload = msg.get('payload', {})
-            player_id = msg.get('player_id') or player_id
+            
+            # QUAN TRỌNG: Cập nhật player_id từ message của client
+            incoming_player_id = msg.get('player_id')
+            if incoming_player_id:
+                player_id = incoming_player_id  # Ưu tiên sử dụng player_id từ client
+
+            print(f"Received message from {player_id}: {mtype}")  # Debug log
 
             if mtype == 'CREATE_ROOM':
                 room_id = payload.get('room')
@@ -97,14 +111,17 @@ def handle_client(conn: socket.socket, addr):
                 if room_id in rooms:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Room exists'}})
                     continue
-                # Thiết lập creator là player_id (nếu client cung cấp) hoặc port
+                
+                # SỬA: Đảm bảo player_id được sử dụng đúng
                 creator = player_id or str(addr[1])
                 room = Room(room_id, creator=creator)
                 rooms[room_id] = room
-                room.add_player(player_id or str(addr[1]), conn)
+                
+                # SỬA: Sử dụng player_id thực tế
+                room.add_player(player_id, conn)
                 current_room = room
+                
                 send_msg(conn, {'type': 'ROOM_CREATED', 'payload': {'room': room_id}})
-                # thông báo cập nhật danh sách phòng cho tất cả client
                 broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
             elif mtype == 'JOIN_ROOM':
@@ -113,15 +130,36 @@ def handle_client(conn: socket.socket, addr):
                 if not room:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Room not found'}})
                     continue
-                ok = room.add_player(player_id or str(addr[1]), conn)
+                
+                # SỬA: Sử dụng player_id thực tế
+                ok = room.add_player(player_id, conn)
                 if not ok:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Room full'}})
                     continue
+                    
                 current_room = room
-                # thông báo cho cả phòng
-                broadcast_room(room, {'type': 'ROOM_JOINED', 'payload': {'room': room_id, 'players': list(room.players.keys())}})
-                # cập nhật số người chơi phòng cho tất cả
+                
+                # SỬA: Gửi thông báo với players_ready
+                broadcast_room(room, {
+                    'type': 'ROOM_JOINED', 
+                    'payload': {
+                        'room': room_id, 
+                        'players': list(room.players.keys()),
+                        'players_ready': room.players_ready  # THÊM players_ready
+                    }
+                })
                 broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
+
+            # THÊM XỬ LÝ PLAYER_JOINED để thông báo khi có người chơi mới
+            elif mtype == 'PLAYER_JOINED':
+                if current_room:
+                    broadcast_room(current_room, {
+                        'type': 'PLAYER_JOINED',
+                        'payload': {
+                            'player': player_id,
+                            'players_ready': current_room.players_ready
+                        }
+                    })
 
             elif mtype == 'LIST_ROOMS':
                 # Trả về danh sách phòng hiện có với số lượng người chơi
@@ -253,6 +291,43 @@ def handle_client(conn: socket.socket, addr):
                     }
                 })
 
+            elif mtype == 'REPLAY_REQUEST':
+                # Yêu cầu chơi lại (rematch)
+                if current_room is None:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Not in room'}})
+                    continue
+                room_id = payload.get('room')
+                if room_id != current_room.room_id:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Room mismatch'}})
+                    continue
+
+                # Đánh dấu player yêu cầu rematch
+                current_room.set_player_replay(player_id, True)
+                # Thông báo tới tất cả trong phòng rằng có yêu cầu rematch
+                broadcast_room(current_room, {
+                    'type': 'REPLAY_REQUESTED',
+                    'payload': {
+                        'player': player_id,
+                        'players_replay': current_room.players_replay
+                    }
+                })
+
+                # Nếu cả hai đều yêu cầu rematch thì reset và bắt đầu
+                if current_room.all_players_replay() and len(current_room.players) == 2:
+                    current_room.reset_game()
+                    broadcast_room(current_room, {
+                        'type': 'GAME_START',
+                        'payload': {}
+                    })
+                    broadcast_room(current_room, {
+                        'type': 'GAME_STATE',
+                        'payload': {
+                            'board': current_room.game.board,
+                            'turn': current_room.game.turn,
+                            'winner': current_room.game.winner
+                        }
+                    })
+
             elif mtype == 'MOVE':
                 if current_room is None:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Not in room'}})
@@ -291,15 +366,24 @@ def handle_client(conn: socket.socket, addr):
                     }
                 })
 
+            # --- BẮT ĐẦU KHỐI ĐƯỢC CẬP NHẬT ---
             elif mtype == 'CHAT':
-                if current_room:
+                # Client gửi: {'type': 'CHAT', 'payload': {'message': '...'}}
+                message_text = payload.get('message') 
+                
+                if current_room and message_text:
+                    # Tạo một message mới để broadcast cho client
+                    # Client GUI đang chờ: {'type': 'CHAT_MESSAGE', 'payload': {'player': '...', 'message': '...'}}
                     broadcast_room(current_room, {
-                        'type': 'CHAT', 
+                        'type': 'CHAT_MESSAGE', 
                         'payload': {
-                            'from': player_id, 
-                            'text': payload.get('text')
+                            'player': player_id, 
+                            'message': message_text
                         }
                     })
+                elif not current_room:
+                    send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Bạn phải ở trong phòng để chat'}})
+            # --- KẾT THÚC KHỐI ĐƯỢC CẬP NHẬT ---
 
             elif mtype == 'LEAVE':
                 # Cho phép LEAVE idempotent: trả về OK ngay cả khi không ở phòng
@@ -339,9 +423,12 @@ def handle_client(conn: socket.socket, addr):
             pass
         # nếu ở trong phòng, remove
         if current_room and player_id:
-            # Reset trạng thái ready khi disconnect
-            current_room.set_player_ready(player_id, False)
-            current_room.remove_player(player_id)
+            if current_room and player_id:
+                current_room.remove_player(player_id)
+                # Reset trạng thái ready khi rời phòng
+                current_room.set_player_ready(player_id, False)
+            
+
             try:
                 broadcast_room(current_room, {
                     'type': 'PLAYER_LEFT', 
