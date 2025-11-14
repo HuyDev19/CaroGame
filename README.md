@@ -1,12 +1,22 @@
 # CaroGame
 
+
 Một project minh hoạ trò Caro (Gomoku) đa người chơi bằng Python.
+
+##  Cách chơi:
+
+- Kết nối đến máy chủ (nút kết nối)
+- Tạo phòng và nhập tên phòng
+- Tham gia phòng (client còn lại)
+- Sẵn sàng ( 2 client)
+- Chơi
+
 
 Nội dung repository
 - `server/` — mã server (socket + threading) quản lý phòng và trạng thái bàn cờ.
 - `client/` — client GUI bằng `tkinter` và module kết nối mạng.
 - `common/` — helper gửi/nhận JSON newline-delimited.
-- `tests/` — unit tests cho logic game.
+
 
 Yêu cầu
 - Python 3.8+
@@ -34,10 +44,8 @@ python -m server.server
 python -m client.gui
 ```
 
-Chạy tests
-```powershell
-python -m unittest discover -v
-```
+#Mở server và tạo 2 client
+python -u main.py
 
 Quy tắc làm việc nhóm (ngắn gọn)
 - Tạo branch cho mỗi feature/bug: `git checkout -b feature/ten-feature`.
@@ -128,7 +136,6 @@ Mục tiêu: một server Python quản lý nhiều phòng Caro (5-in-a-row). Cl
 
 Chuẩn bị
 - Python 3.8+
-- Không cần thư viện bên ngoài (dùng stdlib)
 
 Cấu trúc
 - server/
@@ -139,8 +146,7 @@ Cấu trúc
   - `client.py` - wrapper kết nối mạng (chạy ở thread riêng)
 - common/
   - `messages.py` - helper gửi/nhận JSON per-line
-- tests/
-  - `test_game.py` - test logic thắng
+- main.py - mở server và tạo 2 client
 
 Chạy server (PowerShell):
 ```powershell
