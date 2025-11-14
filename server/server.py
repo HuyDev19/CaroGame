@@ -205,7 +205,7 @@ def handle_client(conn: socket.socket, addr):
                 send_msg(conn, {'type': 'ROOM_RENAMED', 'payload': {'old': room_id, 'new': new_name}})
                 broadcast_all({'type': 'LIST_ROOMS_RESPONSE', 'payload': {'rooms': build_rooms_list()}})
 
-            # THÊM XỬ LÝ READY VÀ NOT_READY
+            # THÊM XỬ LÝ SẴN SÀNG VÀ CHƯA SẴN SÀNG
             elif mtype == 'READY':
                 if current_room is None:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Not in room'}})
@@ -275,7 +275,7 @@ def handle_client(conn: socket.socket, addr):
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Need 2 players to start'}})
                     continue
                 
-                # Reset game state và bắt đầu game mới
+                # Đặt lại trạng thái trò chơi và bắt đầu game mới
                 current_room.reset_game()
                 broadcast_room(current_room, {
                     'type': 'GAME_START', 
@@ -345,7 +345,7 @@ def handle_client(conn: socket.socket, addr):
                     # nếu player_id không có (ví dụ không gửi player_id), thử dùng socket order
                     player_index = 1 if conn == list(current_room.players.values())[0] else 2
 
-                # set turn according to GameState
+                # thiết lập lượt chơi theo GameState
                 gs = current_room.game
                 if gs.turn != player_index:
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Not your turn'}})
@@ -356,7 +356,7 @@ def handle_client(conn: socket.socket, addr):
                     send_msg(conn, {'type': 'ERROR', 'payload': {'msg': 'Invalid move'}})
                     continue
 
-                # broadcast update bàn cờ
+                # phát sóng cập nhật bàn cờ
                 broadcast_room(current_room, {
                     'type': 'GAME_STATE', 
                     'payload': {

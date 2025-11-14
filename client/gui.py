@@ -752,7 +752,7 @@ class CaroGUI:
             close_btn = ttk.Button(btn_frame, text='✖ Đóng', command=on_close, width=14)
             close_btn.pack(side=tk.LEFT, padx=10)
 
-            # Center the window relative to root
+            # Căn giữa cửa sổ so với gốc
             self.root.update_idletasks()
             rw = self.root.winfo_width()
             rh = self.root.winfo_height()
@@ -765,7 +765,6 @@ class CaroGUI:
             win.geometry(f'{ww}x{wh}+{x}+{y}')
 
         except Exception:
-            # Fallback to simple messagebox nếu có lỗi
             try:
                 if is_winner:
                     messagebox.showinfo('Bạn thắng!', f'Chúc mừng — bạn thắng! ({winner_name})')
@@ -906,7 +905,7 @@ class CaroGUI:
             self.show_notification("Bạn phải ở trong phòng để yêu cầu chơi lại.", "warning")
             return
         try:
-            # Tên event 'REPLAY_REQUEST' có thể thay đổi tùy server
+    
             self.conn.send('REPLAY_REQUEST', {'room': self.current_room})
             self.show_notification("Đã gửi yêu cầu chơi lại tới đối thủ.", "info")
         except Exception as e:

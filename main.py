@@ -8,34 +8,34 @@ import os
 # File này để mở server và tạo 2 client GUI trong các process riêng biệt.
 
 def _run_server():
-	# Import inside the thread target to ensure module path is set up correctly
+	# Nhập vào mục tiêu luồng để đảm bảo đường dẫn mô-đun được thiết lập chính xác
 	from server.server import main as server_main
 	server_main()
 
 
 def main():
-	# Start server in a background daemon thread
+	# Khởi động máy chủ trong luồng nền của daemon
 	server_thread = threading.Thread(target=_run_server, daemon=True)
 	server_thread.start()
 
-	# Give server a moment to bind the port
+	# Cho máy chủ một chút thời gian để liên kết cổng
 	time.sleep(0.6)
 
-	# Launch two client GUI processes
+	# Khởi chạy hai tiến trình GUI của máy khách
 	python_exe = sys.executable or "python"
 	clients = []
 	for _ in range(2):
 		p = subprocess.Popen([python_exe, "-m", "client.gui"], cwd=os.path.dirname(os.path.abspath(__file__)))
 		clients.append(p)
 
-	# Wait for both clients to exit; when they do, allow process to finish (daemon server thread will stop)
+	# Chờ cả hai máy khách thoát; khi chúng thoát, hãy cho phép tiến trình kết thúc (luồng máy chủ daemon sẽ dừng)
 	for p in clients:
 		try:
 			p.wait()
 		except KeyboardInterrupt:
 			break
 
-	# Optional: attempt to terminate remaining clients on exit
+	# Tùy chọn: cố gắng chấm dứt các máy khách còn lại khi thoát
 	for p in clients:
 		if p.poll() is None:
 			try:

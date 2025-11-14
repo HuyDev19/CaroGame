@@ -8,8 +8,8 @@ class GameState:
     def __init__(self):
         self.size = 15
         self.board = [[0] * self.size for _ in range(self.size)]
-        self.turn = 1  # 1 hoặc 2
-        self.winner = None  # None, 1, hoặc 2
+        self.turn = 1  
+        self.winner = None 
 
     def make_move(self, x: int, y: int) -> bool:
         """Đặt quân cờ tại (x,y). Trả về True nếu hợp lệ."""
@@ -59,7 +59,7 @@ class Room:
         self.room_id = room_id
         self.players: Dict[str, socket.socket] = {}  # player_id -> socket
         self.players_ready: Dict[str, bool] = {}     # player_id -> ready status
-        # track rematch requests separately from ready state
+        # theo dõi các yêu cầu tái đấu riêng biệt với trạng thái sẵn sàng
         self.players_replay: Dict[str, bool] = {}    # player_id -> replay requested
         self.game = GameState()
         self.creator = creator
@@ -107,7 +107,7 @@ class Room:
     def reset_game(self):
         """Reset game state."""
         self.game = GameState()
-        # reset replay requests as a new game is starting
+        # đặt lại yêu cầu phát lại khi trò chơi mới bắt đầu
         for pid in self.players_replay:
             self.players_replay[pid] = False
         # Có thể reset trạng thái ready nếu muốn
